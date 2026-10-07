@@ -2,8 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, touch-action=manipulation">
-  <title>Windows File Explorer - The Flawless Edition</title>
+  <!-- v1: 移除无效的 touch-action=manipulation 属性 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Windows File Explorer - The Flawless Edition v1</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
   <style>
     :root {
       --slate-1: #fdfcfc; --slate-2: #f9f9f9; --slate-3: #f1f0f0; --slate-4: #e8e8e8;
@@ -15,6 +17,7 @@
       --col-name: 50%; --col-date: 30%; --col-size: 20%;
     }
     
+    html, body { touch-action: manipulation; }
     body, html { margin: 0; padding: 0; height: 100vh; height: 100dvh; font-family: var(--font-family); background: var(--slate-2); color: var(--slate-11); overflow: hidden; user-select: none; -webkit-user-select: none; }
     ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--slate-6); border-radius: 4px; border: 2px solid var(--slate-1); } ::-webkit-scrollbar-thumb:hover { background: var(--slate-8); }
     :focus-visible { outline: 2px solid var(--blue-9); outline-offset: -2px; }
@@ -100,68 +103,79 @@ const getFileIconSvg = (name, type) => {
 
 const normalizePath = (...parts) => parts.join('/').replace(/\/+/g, '/').replace(/\/$/, '');
 const isValidName = (name) => name && name.trim().length > 0 && !/[\\/:*?"<>|]/.test(name);
+const formatBytes = (bytes) => { if(!bytes || bytes===0) return '0 B'; const k=1024, dm=1, sizes=['B','KB','MB','GB'], i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(dm))+' '+sizes[i]; };
 const showToast = (msg, isError = false) => { const container = document.getElementById('toast-container'), toast = document.createElement('div'); toast.className = 'toast'; toast.style.backgroundColor = isError ? 'rgba(229,72,77,0.9)' : ''; toast.innerText = msg; container.appendChild(toast); setTimeout(() => { toast.style.opacity='0'; setTimeout(()=>toast.remove(),300); }, 2500); };
-const formatBytes = (bytes) => { if(bytes===0) return '0 B'; const k=1024, dm=1, sizes=['B','KB','MB','GB'], i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(dm))+' '+sizes[i]; };
-const delay = ms => new Promise(r => setTimeout(r, ms));
 
-class MockFileService {
-  constructor() {
-    this.fs = {};
-    const initNode = (path, type, name) => { this.fs[path] = { type, name, children: type==='folder'?[]:undefined, size: type==='folder'?0:Math.floor(Math.random()*500000), created: new Date(Date.now() - Math.random()*10000000000).toLocaleString(), modified: new Date().toLocaleString(), owner: 'Administrator', perms: '读/写/执行' }; };
-    initNode("C:", "folder", "C:"); initNode("C:/Windows", "folder", "Windows"); initNode("C:/Users", "folder", "Users"); initNode("C:/MassiveData", "folder", "MassiveData");
-    this.fs["C:"].children.push("Windows", "Users", "MassiveData");
-    initNode("C:/Windows/explorer.exe", "file", "explorer.exe"); this.fs["C:/Windows"].children.push("explorer.exe");
-    initNode("C:/Users/readme.md", "file", "readme.md"); this.fs["C:/Users"].children.push("readme.md");
-    for(let i = 1; i <= 100000; i++) { const fn = `File_${i}.txt`, p = `C:/MassiveData/${fn}`; initNode(p, "file", fn); this.fs["C:/MassiveData"].children.push(fn); }
+// ============ axios 配置 ============
+// 如果从 file:// 打开 HTML，则自动指向 http://localhost:8080
+// 如果从 http://localhost:8080 打开，则使用相对路径
+const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8080' : '';
+axios.defaults.baseURL = API_BASE;
+axios.defaults.timeout = 60000;
+
+// 全局错误拦截器
+axios.interceptors.response.use(
+  res => res,
+  err => {
+    const msg = err.response?.data?.error || err.message || '网络错误';
+    showToast(msg, true);
+    return Promise.reject(err);
   }
-  async getFolderContents(path) { await delay(100); if (!this.fs[path] || this.fs[path].type !== "folder") throw new Error("目录不存在"); return this.fs[path].children.map(childName => { const cp = normalizePath(path, childName); return { path: cp, ...this.fs[cp] }; }); }
-  async getAncestors(path) { const parts = path.split('/'); let current = "", ancestors = []; for(let p of parts) { current += (current === "" ? p : "/" + p); ancestors.push({ path: current, name: p }); } return ancestors; }
+);
+
+// ============ API 接口层 (axios) ============
+const API = {
+  async getFolderContents(path) {
+    const res = await axios.get('/api/folders', { params: { path } });
+    return res.data;
+  },
+  async getAncestors(path) {
+    const res = await axios.get('/api/ancestors', { params: { path } });
+    return res.data;
+  },
   async deleteItems(paths) {
-    const pathSet = new Set(paths), prefixes = paths.map(p => p + '/'), keysToDelete = [];
-    for (let key in this.fs) { if (pathSet.has(key)) { keysToDelete.push(key); continue; } for (let pref of prefixes) { if (key.startsWith(pref)) { keysToDelete.push(key); break; } } }
-    keysToDelete.forEach(k => delete this.fs[k]);
-    paths.forEach(p => { const parentPath = p.substring(0, p.lastIndexOf('/')) || 'C:', name = p.substring(p.lastIndexOf('/') + 1); if(this.fs[parentPath]) this.fs[parentPath].children = this.fs[parentPath].children.filter(c => c !== name); });
-  }
+    await axios.delete('/api/items', { data: { paths } });
+  },
   async createItem(parentPath, type, name) {
-    let finalName = name; let counter = 1;
-    while(this.fs[normalizePath(parentPath, finalName)]) finalName = `${name.split('.')[0]}(${counter++})${name.includes('.')?'.'+name.split('.').pop():''}`;
-    const newPath = normalizePath(parentPath, finalName);
-    this.fs[newPath] = { type, name: finalName, children: type === 'folder' ? [] : undefined, size: type==='folder'?0:1024, created: new Date().toLocaleString(), modified: new Date().toLocaleString(), owner: 'Admin', perms: '读/写/执行' };
-    this.fs[parentPath].children.push(finalName); return newPath;
-  }
+    const res = await axios.post('/api/items', { parentPath, type, name });
+    return res.data.path;
+  },
   async renameItem(oldPath, newName) {
-    const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || 'C:', oldName = oldPath.substring(oldPath.lastIndexOf('/') + 1), newPath = normalizePath(parentPath, newName);
-    if(this.fs[newPath]) throw new Error("文件名已存在"); const prefix = oldPath + '/';
-    for(let key in this.fs) {
-      if(key === oldPath) { this.fs[newPath] = { ...this.fs[key], name: newName, modified: new Date().toLocaleString() }; delete this.fs[key]; } 
-      else if (key.startsWith(prefix)) { this.fs[key.replace(oldPath, newPath)] = this.fs[key]; delete this.fs[key]; }
-    }
-    const pChildren = this.fs[parentPath].children; pChildren[pChildren.indexOf(oldName)] = newName; return newPath;
-  }
-  async moveItem(sourcePaths, targetFolder) {
-    let movedCount = 0;
-    for (let oldPath of sourcePaths) {
-      const name = oldPath.substring(oldPath.lastIndexOf('/') + 1), newPath = normalizePath(targetFolder, name);
-      if (this.fs[newPath] || oldPath === targetFolder || targetFolder.startsWith(oldPath + '/')) continue;
-      const prefix = oldPath + '/';
-      for(let key in this.fs) {
-        if(key === oldPath) { this.fs[newPath] = this.fs[key]; delete this.fs[key]; } 
-        else if (key.startsWith(prefix)) { this.fs[key.replace(oldPath, newPath)] = this.fs[key]; delete this.fs[key]; }
+    const res = await axios.put('/api/items/rename', { oldPath, newName });
+    return res.data.path;
+  },
+  async moveItem(sources, targetFolder) {
+    await axios.put('/api/items/move', { sources, targetFolder });
+  },
+  async getProperties(path) {
+    const res = await axios.get('/api/properties', { params: { path } });
+    return res.data;
+  },
+  async downloadFile(path, onProgress) {
+    const res = await axios.get('/api/download', {
+      params: { path },
+      responseType: 'blob',
+      onDownloadProgress: (e) => {
+        const total = e.total || 1;
+        const percent = Math.min(100, Math.round((e.loaded * 100) / total));
+        if (onProgress) onProgress(percent);
       }
-      const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || 'C:';
-      this.fs[parentPath].children = this.fs[parentPath].children.filter(c => c !== name);
-      this.fs[targetFolder].children.push(name); movedCount++;
-    }
-    if(movedCount === 0) throw new Error("无法移动到当前路径");
+    });
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = path.split('/').pop() || 'download';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
   }
-  getProperties(path) { return this.fs[path]; }
-}
-const API = new MockFileService();
+};
 
+// ============ 下载管理器 ============
 class DownloadManager {
   constructor() {
     this.tasks = [];
-    this.interval = null;
     this.panel = document.getElementById('download-panel');
     this.list = document.getElementById('download-list');
   }
@@ -171,32 +185,41 @@ class DownloadManager {
     this.tasks.unshift(task);
     this.render();
     this.panel.classList.add('show');
-    if (!this.interval) this.interval = setInterval(() => this.tick(), 500);
-  }
-  tick() {
-    let hasActive = false;
-    this.tasks.forEach(t => {
-      if (t.status === 'downloading') {
-        hasActive = true;
-        t.progress += Math.random() * 20;
-        if (t.progress >= 100) { t.progress = 100; t.status = 'completed'; }
-      }
+
+    API.downloadFile(path, (percent) => {
+      task.progress = percent;
+      this.render();
+    }).then(() => {
+      task.progress = 100;
+      task.status = 'completed';
+      this.render();
+    }).catch((err) => {
+      task.status = 'error';
+      task.errorMsg = err.message;
+      this.render();
     });
-    this.render();
-    if (!hasActive) { clearInterval(this.interval); this.interval = null; }
   }
   render() {
-    this.list.innerHTML = this.tasks.map(t => `
-      <div class="download-item">
-        <div class="download-item-header">
-          <span class="download-item-name" title="${t.name}">${t.name}</span>
-          <span class="download-item-status">${t.status === 'completed' ? '已完成' : Math.floor(t.progress) + '%'}</span>
-        </div>
-        <div class="download-progress">
-          <div class="download-progress-bar" style="width: ${t.progress}%"></div>
-        </div>
-      </div>
-    `).join('');
+    if (this.tasks.length === 0) {
+      this.list.innerHTML = `<div style="padding:12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`;
+      return;
+    }
+    this.list.innerHTML = this.tasks.map(t => {
+      const statusText = t.status === 'completed' ? '已完成'
+                        : t.status === 'error'     ? '失败'
+                        : Math.floor(t.progress) + '%';
+      const barColor = t.status === 'error' ? 'background:#E5484D;' : '';
+      return `
+        <div class="download-item">
+          <div class="download-item-header">
+            <span class="download-item-name" title="${t.name}">${t.name}</span>
+            <span class="download-item-status">${statusText}</span>
+          </div>
+          <div class="download-progress">
+            <div class="download-progress-bar" style="width: ${t.progress}%; ${barColor}"></div>
+          </div>
+        </div>`;
+    }).join('');
   }
 }
 const downloadManager = new DownloadManager();
@@ -229,16 +252,8 @@ class CollapsibleItem extends HTMLElement {
     `;
     const headerEl = this.shadowRoot.querySelector('.item-header'), checkbox = this.shadowRoot.getElementById(id);
     headerEl.addEventListener('click', (e) => {
-      // 点击文本进行导航
       if (e.target.closest('.text')) { e.preventDefault(); e.stopPropagation(); this.dispatchEvent(new CustomEvent('tree-navigate', { detail: this.getAttribute('path'), bubbles: true, composed: true })); return; }
-      
-      // 【核心修复】如果是叶子节点（没有子文件夹），阻止点击折叠/展开的默认行为，箭头不再变化
-      if (this.hasAttribute('leaf')) {
-        e.preventDefault();
-        return;
-      }
-
-      // 正常加载逻辑
+      if (this.hasAttribute('leaf')) { e.preventDefault(); return; }
       if (checkbox && !checkbox.checked && !this.hasAttribute('loaded')) {
         e.preventDefault();
         this.dispatchEvent(new CustomEvent('tree-load', { detail: { path: this.getAttribute('path'), el: this }, bubbles: true, composed: true }));
@@ -443,13 +458,27 @@ class FMMainView extends HTMLElement {
              el.innerHTML = `<div class="grid-content"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><div class="text" title="${item.name}">${item.name}</div></div>`;
          }
       } else {
-         if (isList) {
-             const nameEl = el.querySelector('.text'), dateEl = el.querySelector('.col-date'), sizeEl = el.querySelector('.col-size');
-             if(nameEl.textContent !== item.name) nameEl.textContent = item.name;
-             if(dateEl.textContent !== item.modified) dateEl.textContent = item.modified;
-             const sz = item.type==='folder'?'':formatBytes(item.size); if(sizeEl.textContent !== sz) sizeEl.textContent = sz;
+         // v1 修复：防御性检查，结构缺失则强制重建，避免 textContent 空指针崩溃
+         const nameEl = el.querySelector('.text');
+         const needRebuild = !nameEl
+             || (isList && !el.querySelector('.col-date'))
+             || (!isList && !el.querySelector('.grid-content'));
+
+         if (needRebuild) {
+             el.dataset.view = this.viewMode;
+             if (isList) {
+                 el.innerHTML = `<div class="col-name"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><span class="text" title="${item.name}">${item.name}</span></div><div class="col-date">${item.modified}</div><div class="col-size">${item.type==='folder'?'':formatBytes(item.size)}</div>`;
+             } else {
+                 el.innerHTML = `<div class="grid-content"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><div class="text" title="${item.name}">${item.name}</div></div>`;
+             }
+         } else if (isList) {
+             const dateEl = el.querySelector('.col-date'), sizeEl = el.querySelector('.col-size');
+             if (nameEl.textContent !== item.name) nameEl.textContent = item.name;
+             if (dateEl && dateEl.textContent !== item.modified) dateEl.textContent = item.modified;
+             const sz = item.type==='folder'?'':formatBytes(item.size);
+             if (sizeEl && sizeEl.textContent !== sz) sizeEl.textContent = sz;
          } else {
-             const nameEl = el.querySelector('.text'); if(nameEl.textContent !== item.name) nameEl.textContent = item.name;
+             if (nameEl.textContent !== item.name) nameEl.textContent = item.name;
          }
       }
     }
@@ -667,7 +696,7 @@ class WinFileExplorer extends HTMLElement {
     this.addEventListener('selectionChange', (e) => this.statusbar.update(this.mainview.renderedItems.length, e.detail.length));
     
     this.addEventListener('file-move', async (e) => {
-      try { await API.moveItem(e.detail.sources, e.detail.targetFolder); showToast(`成功将选定的项移动至目录`); this.rebuildTree(); this.loadPath(this.currentPath, true); } catch(err) { showToast(err.message, true); }
+      try { await API.moveItem(e.detail.sources, e.detail.targetFolder); showToast(`成功将选定的项移动至目录`); this.rebuildTree(); this.loadPath(this.currentPath, true); } catch(err) { /* 拦截器已提示 */ }
     });
 
     document.addEventListener('keydown', (e) => {
@@ -694,17 +723,15 @@ class WinFileExplorer extends HTMLElement {
   async loadTreeFolders(path, parentElement, doExpand = false) {
     if(parentElement.hasAttribute('loaded')) return;
     try { 
-      const items = await API.getFolderContents(path), folders = items.filter(i => i.type === 'folder'); 
+      const items = await API.getFolderContents(path);
+      const folders = items.filter(i => i.type === 'folder'); 
       parentElement.innerHTML = ''; 
       folders.forEach(f => { 
         const item = document.createElement('collapsible-item'); 
         item.setAttribute('label', f.name); 
         item.setAttribute('path', f.path); 
-        const hasSubFolders = API.fs[f.path] && API.fs[f.path].children && API.fs[f.path].children.some(childName => {
-           const child = API.fs[normalizePath(f.path, childName)];
-           return child && child.type === 'folder';
-        });
-        if (!hasSubFolders) item.setAttribute('leaf', '');
+        // 使用后端返回的 hasSubFolders 判断是否为叶子
+        if (!f.hasSubFolders) item.setAttribute('leaf', '');
         parentElement.appendChild(item); 
       }); 
       parentElement.setAttribute('loaded', 'true'); 
@@ -726,13 +753,14 @@ class WinFileExplorer extends HTMLElement {
   async loadPath(path, isHistoryTravel = false) {
     try {
       this.mainview.showSkeleton(true);
-      const ancestors = await API.getAncestors(path), items = await API.getFolderContents(path);
+      const ancestors = await API.getAncestors(path);
+      const items = await API.getFolderContents(path);
       this.currentPath = path; 
       if (!isHistoryTravel) { this.history = this.history.slice(0, this.historyIndex + 1); this.history.push(path); this.historyIndex++; }
       this.addressbar.setPath(path, ancestors);
       this.addressbar.updateNavState(this.historyIndex > 0, this.historyIndex < this.history.length - 1, path !== 'C:');
       this.mainview.showSkeleton(false); this.mainview.setItems(items); this.syncTreeState(path);
-    } catch (e) { this.mainview.showSkeleton(false); showToast(e.message || "访问错误", true); }
+    } catch (e) { this.mainview.showSkeleton(false); /* 拦截器已提示 */ }
   }
 
   showPreview(path) {
@@ -752,12 +780,16 @@ class WinFileExplorer extends HTMLElement {
       else if (action === 'refresh') this.loadPath(this.currentPath, true);
       else if (action === 'selectall') this.mainview.selectAll();
       else if (action === 'selectnone') this.mainview.clearSelection();
-      else if (action === 'invert') this.mainview.invertSelection();
       else if (action === 'open') { if(selected.length === 1 && this.mainview.items.find(i => i.path === selected[0]).type === 'folder') this.loadPath(selected[0]); }
       else if (action === 'view-file') { if(selected.length === 1 && this.mainview.items.find(i => i.path === selected[0]).type === 'file') this.showPreview(selected[0]); }
       else if (action === 'delete') {
          if(!selected.length) return showToast("请先选择要删除的项", true);
-         if(confirm(`确定永久删除这 ${selected.length} 个项目吗？`)) { await API.deleteItems(selected); if (selected.some(p => this.currentPath === p || this.currentPath.startsWith(p + '/'))) this.currentPath = 'C:'; this.rebuildTree(); this.loadPath(this.currentPath, true); showToast(`回收站: 已清除 ${selected.length} 个项目`); }
+         if(confirm(`确定永久删除这 ${selected.length} 个项目吗？`)) { 
+           await API.deleteItems(selected); 
+           if (selected.some(p => this.currentPath === p || this.currentPath.startsWith(p + '/'))) this.currentPath = 'C:'; 
+           this.rebuildTree(); this.loadPath(this.currentPath, true); 
+           showToast(`已删除 ${selected.length} 个项目`); 
+         }
       }
       else if (action.startsWith('new')) {
          let type = 'file', ext = '.txt';
@@ -766,19 +798,23 @@ class WinFileExplorer extends HTMLElement {
          else if (action === 'newfile-js') ext = '.js';
          const name = prompt("请输入名称:", type === 'folder' ? "新建文件夹" : "新文件" + ext);
          if (!name) return; if (!isValidName(name)) return showToast("名称不合法", true);
-         await API.createItem(this.currentPath, type, name); this.rebuildTree(); this.loadPath(this.currentPath, true);
+         await API.createItem(this.currentPath, type, name); 
+         this.rebuildTree(); this.loadPath(this.currentPath, true);
       }
       else if (action === 'rename') {
          if(selected.length !== 1) return showToast("只能选择单一项目进行重命名", true);
          const oldPath = selected[0]; const oldName = oldPath.substring(oldPath.lastIndexOf('/') + 1); const newName = prompt("重命名为:", oldName);
          if (!newName || newName === oldName) return; if (!isValidName(newName)) return showToast("名称不合法", true);
-         await API.renameItem(oldPath, newName); const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || 'C:';
-         if (this.currentPath === oldPath) this.currentPath = normalizePath(parentPath, newName); else if (this.currentPath.startsWith(oldPath + '/')) this.currentPath = this.currentPath.replace(oldPath, normalizePath(parentPath, newName));
+         await API.renameItem(oldPath, newName); 
+         const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || 'C:';
+         if (this.currentPath === oldPath) this.currentPath = normalizePath(parentPath, newName); 
+         else if (this.currentPath.startsWith(oldPath + '/')) this.currentPath = this.currentPath.replace(oldPath, normalizePath(parentPath, newName));
          this.rebuildTree(); this.loadPath(this.currentPath, true);
       }
       else if (action === 'properties') {
          if(selected.length !== 1) return showToast("请选择单个文件查看属性", true);
-         const prop = API.getProperties(selected[0]); document.getElementById('prop-title').innerText = prop.name + ' 的属性';
+         const prop = await API.getProperties(selected[0]); 
+         document.getElementById('prop-title').innerText = prop.name + ' 的属性';
          document.getElementById('prop-body').innerHTML = `<div class="prop-row"><span>类型：</span><span>${prop.type === 'folder' ? '文件夹' : '文件'}</span></div><div class="prop-row"><span>位置：</span><span style="word-break:break-all">${selected[0]}</span></div><div class="prop-row"><span>大小：</span><span>${formatBytes(prop.size)}</span></div><div class="prop-row"><span>创建时间：</span><span>${prop.created}</span></div><div class="prop-row"><span>修改时间：</span><span>${prop.modified}</span></div><div class="prop-row"><span>权限：</span><span>${prop.perms}</span></div><div class="prop-row"><span>所有者：</span><span>${prop.owner}</span></div>`;
          document.getElementById('prop-modal').classList.add('active');
       }
@@ -788,7 +824,7 @@ class WinFileExplorer extends HTMLElement {
          showToast(`已添加 ${selected.length} 个下载任务`);
       }
       else if (['copy', 'paste', 'cut', 'undo'].includes(action)) showToast(`模拟执行高级系统操作: [${action}]`);
-    } catch(e) { showToast(e.message, true); }
+    } catch(e) { /* 拦截器已提示 */ }
   }
 }
 customElements.define("win-file-explorer", WinFileExplorer);
