@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Windows File Explorer - The Flawless Edition v3</title>
+  <title>Windows File Explorer - The Flawless Edition v6</title>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
   <style>
     :root {
@@ -17,10 +17,13 @@
     }
     html, body { touch-action: manipulation; }
     body, html { margin: 0; padding: 0; height: 100vh; height: 100dvh; font-family: var(--font-family); background: var(--slate-2); color: var(--slate-11); overflow: hidden; user-select: none; -webkit-user-select: none; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--slate-6); border-radius: 4px; border: 2px solid var(--slate-1); } ::-webkit-scrollbar-thumb:hover { background: var(--slate-8); }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--slate-6); border-radius: 4px; border: 2px solid var(--slate-1); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--slate-8); }
     :focus-visible { outline: 2px solid var(--blue-9); outline-offset: -2px; }
     #toast-container { position: fixed; bottom: 40px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-    .toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 6px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s forwards; backdrop-filter: blur(10px); }
+    .toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 6px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s forwards; backdrop-filter: blur(10px); max-width: 400px; white-space: pre-wrap; }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     .drag-ghost { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 10000; opacity: 0.95; background: var(--slate-1); border: 1px solid var(--blue-9); box-shadow: 0 8px 24px rgba(0,90,255,0.25); padding: 8px 14px; border-radius: 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--blue-11); will-change: transform; }
     .drag-ghost .badge { background: var(--blue-9); color: white; border-radius: 10px; padding: 2px 6px; font-size: 11px; }
@@ -30,10 +33,12 @@
     .modal-overlay.active .modal-box { transform: scale(1); }
     .modal-box.large { width: 600px; height: 500px; }
     .modal-header { padding: 12px 16px; border-bottom: 1px solid var(--slate-4); display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 14px; background: var(--slate-2); border-radius: 8px 8px 0 0; }
-    .modal-close { cursor: pointer; color: var(--slate-8); font-size: 16px; } .modal-close:hover { color: var(--slate-12); }
+    .modal-close { cursor: pointer; color: var(--slate-8); font-size: 16px; }
+    .modal-close:hover { color: var(--slate-12); }
     .modal-body { padding: 16px; font-size: 13px; line-height: 1.8; color: var(--slate-12); overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
-    .prop-row { display: flex; border-bottom: 1px dashed var(--slate-3); padding: 6px 0; } .prop-row span:first-child { width: 80px; color: var(--slate-8); }
-    .download-panel { position: fixed; right: 20px; bottom: 60px; width: 340px; background: white; border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 4000; display: flex; flex-direction: column; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s; backdrop-filter: blur(10px); }
+    .prop-row { display: flex; border-bottom: 1px dashed var(--slate-3); padding: 6px 0; }
+    .prop-row span:first-child { width: 80px; color: var(--slate-8); flex-shrink: 0; }
+    .download-panel { position: fixed; right: 20px; bottom: 60px; width: 360px; background: white; border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 4000; display: flex; flex-direction: column; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s; backdrop-filter: blur(10px); }
     .download-panel.show { opacity: 1; visibility: visible; transform: translateY(0); }
     .download-header { padding: 10px 16px; border-bottom: 1px solid var(--slate-4); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; background: var(--slate-2); border-radius: 8px 8px 0 0; }
     .download-header-actions { display: flex; align-items: center; gap: 12px; }
@@ -44,7 +49,9 @@
     .download-item:hover { border-color: var(--slate-5); }
     .download-item-header { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; gap: 6px; }
     .download-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-weight: 500; color: var(--slate-12); }
-    .download-item-status { color: var(--slate-8); flex-shrink: 0; }
+    .download-item-status { color: var(--slate-8); flex-shrink: 0; font-size: 11px; }
+    .download-item-status.ok { color: #2f9e44; }
+    .download-item-status.err { color: #E5484D; }
     .download-item-remove { color: var(--slate-8); cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s; padding: 0 2px; flex-shrink: 0; font-size: 13px; line-height: 1; }
     .download-item:hover .download-item-remove { opacity: 1; }
     .download-item-remove:hover { color: #E5484D; }
@@ -90,8 +97,8 @@ const SVGS = {
   paste: '<path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/>',
   undo: '<path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>',
   download: '<path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>',
-  restore: '<path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>',
-  trash: '<path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>'
+  trash: '<path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>',
+  computer: '<path d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/>'
 };
 const getSvg = (key, color='#8f8f8f') => `<svg viewBox="0 0 24 24" fill="${color}" style="width:100%;height:100%; display:block;">${SVGS[key]||SVGS.file}</svg>`;
 const getFileIconSvg = (name, type) => {
@@ -109,25 +116,23 @@ const getFileIconSvg = (name, type) => {
 const normalizePath = (...parts) => parts.join('/').replace(/\/+/g, '/').replace(/\/$/, '');
 const isValidName = (name) => name && name.trim().length > 0 && !/[\\/:*?"<>|]/.test(name);
 const formatBytes = (bytes) => { if(!bytes || bytes===0) return '0 B'; const k=1024, dm=1, sizes=['B','KB','MB','GB'], i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(dm))+' '+sizes[i]; };
-const showToast = (msg, isError = false) => { const container = document.getElementById('toast-container'), toast = document.createElement('div'); toast.className = 'toast'; toast.style.backgroundColor = isError ? 'rgba(229,72,77,0.9)' : ''; toast.innerText = msg; container.appendChild(toast); setTimeout(() => { toast.style.opacity='0'; setTimeout(()=>toast.remove(),300); }, 2500); };
+const showToast = (msg, isError = false) => { const container = document.getElementById('toast-container'), toast = document.createElement('div'); toast.className = 'toast'; toast.style.backgroundColor = isError ? 'rgba(229,72,77,0.9)' : ''; toast.innerText = msg; container.appendChild(toast); setTimeout(() => { toast.style.opacity='0'; setTimeout(()=>toast.remove(),300); }, 3500); };
 
-// ============ axios ============
 const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8080' : '';
 axios.defaults.baseURL = API_BASE;
-axios.defaults.timeout = 60000;
+axios.defaults.timeout = 120000;
 axios.interceptors.response.use(res => res, err => {
   const msg = err.response?.data?.error || err.message || '网络错误';
   showToast(msg, true);
   return Promise.reject(err);
 });
 
-// ============ v3: 剪贴板 ============
 const clipboard = { mode: null, paths: [] };
 
-// ============ API ============
 const API = {
-  async getFolderContents(path) { const r = await axios.get('/api/folders', { params: { path } }); return r.data; },
-  async getAncestors(path) { const r = await axios.get('/api/ancestors', { params: { path } }); return r.data; },
+  async getMode() { const r = await axios.get('/api/mode'); return r.data.mode; },
+  async getFolderContents(path) { const r = await axios.get('/api/folders', { params: { path: path || '' } }); return r.data; },
+  async getAncestors(path) { const r = await axios.get('/api/ancestors', { params: { path: path || '' } }); return r.data; },
   async deleteItems(paths) { await axios.delete('/api/items', { data: { paths } }); },
   async createItem(parentPath, type, name) { const r = await axios.post('/api/items', { parentPath, type, name }); return r.data.path; },
   async renameItem(oldPath, newName) { const r = await axios.put('/api/items/rename', { oldPath, newName }); return r.data.path; },
@@ -139,27 +144,55 @@ const API = {
   async restoreFromTrash(paths) { await axios.post('/api/trash/restore', { paths }); },
   async purgeTrash(paths) { await axios.delete('/api/trash', { data: { paths } }); },
   async clearTrash() { await axios.delete('/api/trash', { data: { all: true } }); },
-  async downloadFile(path, onProgress) {
-    const res = await axios.get('/api/download', {
-      params: { path }, responseType: 'blob',
-      onDownloadProgress: (e) => {
-        const total = e.total || 1;
-        const percent = Math.min(100, Math.round((e.loaded * 100) / total));
-        if (onProgress) onProgress(percent);
+  async getDownloadMeta(path) { const r = await axios.get('/api/download/meta', { params: { path } }); return r.data; },
+  async getDownloadChunk(path, index) {
+    const r = await axios.get('/api/download/chunk', { params: { path, index }, responseType: 'arraybuffer' });
+    return r.data;
+  },
+  async downloadFileWithChunks(path, onProgress, onHashResult) {
+    const meta = await API.getDownloadMeta(path);
+    const totalChunks = meta.totalChunks;
+    const chunks = [];
+    for (let i = 0; i < totalChunks; i++) {
+      const buf = await API.getDownloadChunk(path, i);
+      chunks.push(buf);
+      if (onProgress) onProgress(Math.round(((i + 1) / totalChunks) * 80));
+    }
+    const blob = new Blob(chunks, { type: 'application/octet-stream' });
+    if (onProgress) onProgress(85);
+    if (meta.sha256 && meta.size > 0 && meta.size <= 500 * 1024 * 1024) {
+      try {
+        const arrayBuf = await blob.arrayBuffer();
+        if (onProgress) onProgress(90);
+        const hashBuf = await crypto.subtle.digest('SHA-256', arrayBuf);
+        const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        if (onProgress) onProgress(95);
+        if (hashHex !== meta.sha256) {
+          if (onHashResult) onHashResult(false, hashHex);
+          throw new Error(`SHA-256 校验失败\n预期: ${meta.sha256}\n实际: ${hashHex}`);
+        }
+        if (onHashResult) onHashResult(true, hashHex);
+      } catch (e) {
+        if (e.message.startsWith('SHA-256')) throw e;
+        console.warn('SHA-256 计算失败:', e);
+        if (onHashResult) onHashResult(null, '');
       }
-    });
-    const url = window.URL.createObjectURL(new Blob([res.data]));
+    } else {
+      if (onHashResult) onHashResult(null, '');
+    }
+    if (onProgress) onProgress(98);
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = path.split('/').pop() || 'download';
+    a.download = meta.name || path.split('/').pop() || 'download';
     document.body.appendChild(a);
     a.click();
     a.remove();
-    window.URL.revokeObjectURL(url);
+    URL.revokeObjectURL(url);
+    if (onProgress) onProgress(100);
   }
 };
 
-// ============ 下载管理器 ============
 class DownloadManager {
   constructor() {
     this.tasks = [];
@@ -177,15 +210,25 @@ class DownloadManager {
   }
   add(path) {
     const name = path.split('/').pop() || path;
-    const task = { id: Date.now() + Math.random().toString(36).slice(2), name, path, progress: 0, status: 'downloading' };
+    const task = { id: Date.now() + Math.random().toString(36).slice(2), name, path, progress: 0, status: 'downloading', hashOk: null };
     this.tasks.unshift(task);
     this.render();
     this.panel.classList.add('show');
-    API.downloadFile(path, (percent) => { task.progress = percent; this.render(); }).then(() => {
-      task.progress = 100; task.status = 'completed'; this.render();
-      showToast(`✓ 已下载: ${task.name}`);
+    API.downloadFileWithChunks(path,
+      (percent) => { task.progress = percent; this.render(); },
+      (ok, hash) => { task.hashOk = ok; }
+    ).then(() => {
+      task.progress = 100;
+      task.status = 'completed';
+      this.render();
+      if (task.hashOk === true) showToast(`✓ 已下载并校验通过: ${task.name}`);
+      else if (task.hashOk === false) showToast(`⚠ 下载完成但校验失败: ${task.name}`, true);
+      else showToast(`✓ 已下载: ${task.name}`);
     }).catch((err) => {
-      task.status = 'error'; task.errorMsg = err.message || '下载失败'; this.render();
+      task.status = 'error';
+      task.errorMsg = err.message || '下载失败';
+      this.render();
+      showToast(`下载失败: ${err.message || '未知错误'}`, true);
     });
   }
   removeTask(id) {
@@ -204,17 +247,27 @@ class DownloadManager {
   togglePanel() { this.panel.classList.toggle('show'); }
   updateBadge() {
     if (!this.badge) return;
-    const activeCount = this.tasks.filter(t => t.status === 'downloading').length;
-    if (activeCount > 0) { this.badge.textContent = activeCount; this.badge.classList.add('show'); }
+    const active = this.tasks.filter(t => t.status === 'downloading').length;
+    if (active > 0) { this.badge.textContent = active; this.badge.classList.add('show'); }
     else { this.badge.classList.remove('show'); }
   }
   render() {
     this.updateBadge();
-    if (this.tasks.length === 0) { this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`; return; }
+    if (this.tasks.length === 0) {
+      this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`;
+      return;
+    }
     this.list.innerHTML = this.tasks.map(t => {
-      const statusText = t.status === 'completed' ? '已完成' : t.status === 'error' ? '失败' : Math.floor(t.progress) + '%';
-      const barColor = t.status === 'error' ? 'background:#E5484D;' : '';
-      return `<div class="download-item"><div class="download-item-header"><span class="download-item-name" title="${t.name}">${t.name}</span><span class="download-item-status">${statusText}</span><span class="download-item-remove" data-id="${t.id}">✖</span></div><div class="download-progress"><div class="download-progress-bar" style="width: ${t.progress}%; ${barColor}"></div></div></div>`;
+      let statusText, statusClass = '';
+      if (t.status === 'completed') {
+        if (t.hashOk === true) { statusText = '✓ 校验通过'; statusClass = 'ok'; }
+        else if (t.hashOk === false) { statusText = '✗ 校验失败'; statusClass = 'err'; }
+        else { statusText = '已完成'; }
+      } else if (t.status === 'error') { statusText = '失败'; statusClass = 'err'; }
+      else { statusText = Math.floor(t.progress) + '%'; }
+      const barColor = (t.status === 'error' || t.hashOk === false) ? 'background:#E5484D;'
+                     : t.hashOk === true ? 'background:#2f9e44;' : '';
+      return `<div class="download-item"><div class="download-item-header"><span class="download-item-name" title="${t.name}">${t.name}</span><span class="download-item-status ${statusClass}">${statusText}</span><span class="download-item-remove" data-id="${t.id}">✖</span></div><div class="download-progress"><div class="download-progress-bar" style="width: ${t.progress}%; ${barColor}"></div></div></div>`;
     }).join('');
   }
 }
@@ -227,6 +280,8 @@ class CollapsibleItem extends HTMLElement {
   attributeChangedCallback(name, oldVal, newVal) { if (oldVal !== newVal) this.render(); }
   render() {
     const label = this.getAttribute("label") || "Item", isOpen = this.hasAttribute("open") ? "checked" : "", id = "tog_" + Math.random().toString(36).substr(2, 9);
+    const isLeaf = this.hasAttribute('leaf');
+    const folderIcon = getSvg('folder', '#0090ff');
     this.shadowRoot.innerHTML = `
       <style>:host { display: block; --hover-bg: var(--slate-4); outline: none; } .toggle { display: none; } 
       .item-header { display: flex; align-items: center; padding: 2px 4px; margin: 1px 0; cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: 500; transition: background 0.1s; } 
@@ -234,6 +289,7 @@ class CollapsibleItem extends HTMLElement {
       .icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; flex-shrink: 0; }
       .arrow { border: solid var(--slate-8); border-width: 0 2px 2px 0; display: inline-block; padding: 3px; transform: rotate(-45deg); transition: transform 0.2s; margin-right: 4px; }
       .toggle:checked ~ .item-header .arrow { transform: rotate(45deg); }
+      :host([leaf]) .arrow { visibility: hidden; }
       .file-icon { width: 14px; height: 14px; margin-right: 6px; display: inline-block; }
       .text { padding: 4px 10px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 0.1s; display: flex; align-items: center; } 
       .text:hover { background: rgba(0,0,0,0.08); } 
@@ -241,16 +297,16 @@ class CollapsibleItem extends HTMLElement {
       <input type="checkbox" id="${id}" class="toggle" ${isOpen}>
       <label for="${id}" class="item-header" tabindex="0">
         <span class="icon"><i class="arrow"></i></span>
-        <span class="text" title="${label}"><div class="file-icon">${getSvg('folder', '#0090ff')}</div>${label}</span>
+        <span class="text" title="${label}"><div class="file-icon">${folderIcon}</div>${label}</span>
       </label>
       <div class="fold"><div class="content"><slot></slot></div></div>`;
     const headerEl = this.shadowRoot.querySelector('.item-header'), checkbox = this.shadowRoot.getElementById(id);
     headerEl.addEventListener('click', (e) => {
-      if (e.target.closest('.text')) { e.preventDefault(); e.stopPropagation(); this.dispatchEvent(new CustomEvent('tree-navigate', { detail: this.getAttribute('path'), bubbles: true, composed: true })); return; }
+      if (e.target.closest('.text')) { e.preventDefault(); e.stopPropagation(); this.dispatchEvent(new CustomEvent('tree-navigate', { detail: this.getAttribute('path') || '', bubbles: true, composed: true })); return; }
       if (this.hasAttribute('leaf')) { e.preventDefault(); return; }
       if (checkbox && !checkbox.checked && !this.hasAttribute('loaded')) {
         e.preventDefault();
-        this.dispatchEvent(new CustomEvent('tree-load', { detail: { path: this.getAttribute('path'), el: this }, bubbles: true, composed: true }));
+        this.dispatchEvent(new CustomEvent('tree-load', { detail: { path: this.getAttribute('path') || '', el: this }, bubbles: true, composed: true }));
       }
     });
   }
@@ -316,7 +372,7 @@ class FMAddressBar extends HTMLElement {
     });
     searchInput.addEventListener('input', (e) => { pendingSearch = e.target.value; channel.port2.postMessage(null); });
     const box = this.shadowRoot.getElementById('box'), crumbs = this.shadowRoot.getElementById('breadcrumbs'), editor = this.shadowRoot.getElementById('editor');
-    box.addEventListener('click', (e) => { if (e.target.classList.contains('crumb')) this.dispatchEvent(new CustomEvent('navigate', { detail: e.target.dataset.path, bubbles: true, composed: true })); else { crumbs.style.display = 'none'; editor.style.display = 'block'; editor.focus(); editor.select(); } });
+    box.addEventListener('click', (e) => { if (e.target.classList.contains('crumb')) this.dispatchEvent(new CustomEvent('navigate', { detail: e.target.dataset.path || '', bubbles: true, composed: true })); else { crumbs.style.display = 'none'; editor.style.display = 'block'; editor.focus(); editor.select(); } });
     editor.addEventListener('blur', () => { crumbs.style.display = 'flex'; editor.style.display = 'none'; });
     editor.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { this.dispatchEvent(new CustomEvent('navigate', { detail: editor.value.trim(), bubbles: true, composed: true })); editor.blur(); } });
   }
@@ -444,20 +500,16 @@ class FMMainView extends HTMLElement {
     }
     existingMap.forEach(el => el.remove());
   }
-  
   syncSelectionVisuals() { 
       this.viewport.querySelectorAll('.item').forEach(el => el.classList.toggle('selected', this.selectedIds.has(el.dataset.path))); 
       clearTimeout(this._selTimer); this._selTimer = setTimeout(() => this.dispatchEvent(new CustomEvent('selectionChange', { detail: Array.from(this.selectedIds), bubbles: true, composed: true })), 50);
   }
-  
   initInteractionEngine() {
     let state = 'IDLE', startX, startY, lastClientY;
     let longPressTimer = null, autoScrollTimer = null, ghostEl = null, dragTargetItem = null;
-    // v3: 记录 pointerdown 时按下的元素
     let pointerDownItem = null;
     let pointerDownWasSelected = false;
     const cw = () => this.scroller.clientWidth, iW = () => this.viewMode === 'list' ? cw() : 108, iH = () => this.viewMode === 'list' ? 32 : 108, cols = () => this.viewMode === 'list' ? 1 : Math.max(1, Math.floor(cw() / iW()));
-
     const cleanup = () => {
       clearTimeout(longPressTimer); cancelAnimationFrame(autoScrollTimer); autoScrollTimer = null;
       this.marquee.style.display = 'none'; if(ghostEl) { ghostEl.remove(); ghostEl = null; }
@@ -465,7 +517,6 @@ class FMMainView extends HTMLElement {
       pointerDownItem = null; pointerDownWasSelected = false;
       state = 'IDLE';
     };
-
     const startEdgeScroll = (callback) => {
       if (autoScrollTimer) return;
       const loop = () => {
@@ -479,11 +530,7 @@ class FMMainView extends HTMLElement {
         autoScrollTimer = null; 
       }; loop();
     };
-
-    this.scroller.addEventListener('touchmove', (e) => { 
-        if (state === 'MARQUEE' || state === 'DRAG' || state === 'TOUCH_LONG_PRESSED') e.preventDefault(); 
-    }, { passive: false });
-
+    this.scroller.addEventListener('touchmove', (e) => { if (state === 'MARQUEE' || state === 'DRAG' || state === 'TOUCH_LONG_PRESSED') e.preventDefault(); }, { passive: false });
     this.scroller.addEventListener('contextmenu', (e) => {
       e.preventDefault(); 
       if (state.startsWith('TOUCH')) return; 
@@ -491,7 +538,6 @@ class FMMainView extends HTMLElement {
       if (itemEl && !this.selectedIds.has(itemEl.dataset.path)) { this.selectedIds.clear(); this.selectedIds.add(itemEl.dataset.path); this.syncSelectionVisuals(); }
       this.dispatchEvent(new CustomEvent('context', { detail: { x: e.clientX, y: e.clientY, type: itemEl ? itemEl.dataset.type : 'empty', inTrash: itemEl ? !!itemEl.dataset.inTrash : false }, bubbles: true, composed: true }));
     });
-
     this.scroller.addEventListener('pointerdown', (e) => {
       window.dispatchEvent(new Event('hide-context'));
       if(e.button !== 0 && e.pointerType === 'mouse') return;
@@ -502,17 +548,12 @@ class FMMainView extends HTMLElement {
       startY = e.clientY - rect.top + this.scroller.scrollTop; 
       lastClientY = e.clientY;
       const itemEl = e.target.closest('.item');
-      // v3: 记录按下的元素和它当时是否已被选中
       pointerDownItem = itemEl;
       pointerDownWasSelected = !!(itemEl && this.selectedIds.has(itemEl.dataset.path));
-      
       if (e.pointerType === 'mouse') {
          state = 'MOUSE_WAIT';
-         if (itemEl) { 
-            if (!e.ctrlKey && !this.selectedIds.has(itemEl.dataset.path)) { this.selectedIds.clear(); this.selectedIds.add(itemEl.dataset.path); this.syncSelectionVisuals(); } 
-         } else { 
-            if (!e.ctrlKey) { this.selectedIds.clear(); this.syncSelectionVisuals(); } 
-         }
+         if (itemEl) { if (!e.ctrlKey && !this.selectedIds.has(itemEl.dataset.path)) { this.selectedIds.clear(); this.selectedIds.add(itemEl.dataset.path); this.syncSelectionVisuals(); } } 
+         else { if (!e.ctrlKey) { this.selectedIds.clear(); this.syncSelectionVisuals(); } }
       } else {
          state = 'TOUCH_WAIT';
          longPressTimer = setTimeout(() => {
@@ -524,39 +565,25 @@ class FMMainView extends HTMLElement {
          }, 400);
       }
     });
-
     this.scroller.addEventListener('pointermove', (e) => {
       if (state === 'IDLE' || state === 'SCROLLING') return;
       const rect = this.scroller.getBoundingClientRect(), currX = e.clientX - rect.left + this.scroller.scrollLeft, currY = e.clientY - rect.top + this.scroller.scrollTop; 
       lastClientY = e.clientY; const dist = Math.abs(currY - startY) + Math.abs(currX - startX);
-      
       if (e.pointerType === 'mouse') {
          if (state === 'MOUSE_WAIT' && dist > 5) {
-            // v3: 判定依据——pointerdown 时按下的元素是否为"已选中"
-            if (pointerDownWasSelected && pointerDownItem) {
-                state = 'DRAG';
-            } else {
-                state = 'MARQUEE';
-                this.selectedIds.clear();
-                this.syncSelectionVisuals();
-            }
+            if (pointerDownWasSelected && pointerDownItem) state = 'DRAG';
+            else { state = 'MARQUEE'; this.selectedIds.clear(); this.syncSelectionVisuals(); }
             this.scroller.setPointerCapture(e.pointerId);
          }
       } else {
          if (state === 'TOUCH_WAIT' && dist > 10) { clearTimeout(longPressTimer); state = 'SCROLLING'; return; }
          else if (state === 'TOUCH_LONG_PRESSED' && dist > 5) { 
              window.dispatchEvent(new Event('hide-context')); 
-             if (pointerDownWasSelected && pointerDownItem) {
-                 state = 'DRAG';
-             } else {
-                 state = 'MARQUEE';
-                 this.selectedIds.clear();
-                 this.syncSelectionVisuals();
-             }
+             if (pointerDownWasSelected && pointerDownItem) state = 'DRAG';
+             else { state = 'MARQUEE'; this.selectedIds.clear(); this.syncSelectionVisuals(); }
              this.scroller.setPointerCapture(e.pointerId);
          }
       }
-
       if (state === 'MARQUEE') {
         const update = (cY) => {
           const mT = Math.min(startY, cY), mB = Math.max(startY, cY), mL = Math.min(startX, currX), mR = Math.max(startX, currX);
@@ -566,7 +593,6 @@ class FMMainView extends HTMLElement {
           this.syncSelectionVisuals();
         }; update(currY); startEdgeScroll(update);
       }
-      
       if (state === 'DRAG') {
         if (!ghostEl) { ghostEl = document.createElement('div'); ghostEl.className = 'drag-ghost'; ghostEl.innerHTML = `📄 <span class="badge">${this.selectedIds.size}</span> 项移动中`; document.body.appendChild(ghostEl); }
         if (!this.ghostRaf) { this.ghostRaf = requestAnimationFrame(() => { if (ghostEl) { ghostEl.style.transform = `translate(${e.clientX + 10}px, ${e.clientY + 10}px)`; } this.ghostRaf = null; }); }
@@ -576,7 +602,6 @@ class FMMainView extends HTMLElement {
         startEdgeScroll(()=>{});
       }
     });
-
     const endInteraction = (e) => {
       const s = state, target = dragTargetItem; cleanup(); 
       try { this.scroller.releasePointerCapture(e.pointerId); } catch(err){}
@@ -615,9 +640,9 @@ class FMContextMenu extends HTMLElement {
     } else if (contextType === 'trash-empty') {
       html += `<div class="menu-item" data-action="empty-trash" style="color:#E5484D">清空回收站</div><div class="divider"></div><div class="menu-item" data-action="refresh">刷新</div>`;
     } else if (contextType === 'folder') {
-      html += `<div class="menu-item" data-action="open" style="font-weight:bold">打开</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`;
+      html += `<div class="menu-item" data-action="open" style="font-weight:bold">打开</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="properties">属性</div>`;
     } else if (contextType === 'file') {
-      html += `<div class="menu-item" data-action="view-file" style="font-weight:bold">查看</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`;
+      html += `<div class="menu-item" data-action="view-file" style="font-weight:bold">查看</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载 (分片+SHA256)</div><div class="menu-item" data-action="properties">属性</div>`;
     } else {
       html += `<div class="menu-item has-submenu">查看<div class="submenu"><div class="menu-item" data-action="viewToggle">切换网格/列表</div></div></div><div class="menu-item has-submenu">排列方式<div class="submenu"><div class="menu-item" data-action="sort-name">按名称</div><div class="menu-item" data-action="sort-date">按日期</div><div class="menu-item" data-action="sort-size">按大小</div></div></div><div class="menu-item" data-action="refresh">刷新</div><div class="divider"></div><div class="menu-item" data-action="paste">粘贴</div><div class="menu-item" data-action="undo">撤销</div><div class="menu-item" data-action="selectall">全选</div><div class="divider"></div><div class="menu-item has-submenu">新建<div class="submenu"><div class="menu-item" data-action="newfolder">📁 文件夹</div><div class="divider"></div><div class="menu-item" data-action="newfile-txt">📝 文本文档 (.txt)</div><div class="menu-item" data-action="newfile-md">📝 Markdown (.md)</div><div class="menu-item" data-action="newfile-js">⚙️ JS 脚本 (.js)</div></div></div>`;
     }
@@ -649,12 +674,16 @@ customElements.define("fm-context-menu", FMContextMenu);
 class FMStatusBar extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
   connectedCallback() { this.update(0, 0); }
-  update(total, selected) { this.shadowRoot.innerHTML = `<style>:host { display: flex; padding: 4px 16px; background: var(--slate-1); border-top: 1px solid var(--slate-5); font-size: 12px; gap: 16px; } .divider { width: 1px; background: var(--slate-6); }</style><span>${total} 个项目</span> ${selected > 0 ? `<div class="divider"></div><span>选中 ${selected} 个项目</span>` : ''}`; }
+  update(total, selected) { 
+    const modeHtml = this._mode ? `<span class="mode">${this._mode === 'disk' ? '物理磁盘模式' : '虚拟空间模式'}</span>` : '';
+    this.shadowRoot.innerHTML = `<style>:host { display: flex; padding: 4px 16px; background: var(--slate-1); border-top: 1px solid var(--slate-5); font-size: 12px; gap: 16px; align-items: center; } .divider { width: 1px; height: 12px; background: var(--slate-6); } .mode { color: var(--slate-8); font-size: 11px; margin-left: auto; }</style><span>${total} 个项目</span> ${selected > 0 ? `<div class="divider"></div><span>选中 ${selected} 个项目</span>` : ''}${modeHtml}`; 
+  }
+  setMode(mode) { this._mode = mode; this.update(0, 0); }
 }
 customElements.define("fm-statusbar", FMStatusBar);
 
 class WinFileExplorer extends HTMLElement {
-  constructor() { super(); this.attachShadow({ mode: "open" }); this.currentPath = "C:"; this.currentView = 'explorer'; this.history = []; this.historyIndex = -1; }
+  constructor() { super(); this.attachShadow({ mode: "open" }); this.currentPath = ""; this.currentView = 'explorer'; this.history = []; this.historyIndex = -1; this.storageMode = 'disk'; }
   async connectedCallback() {
     this.shadowRoot.innerHTML = `
       <style>
@@ -707,15 +736,10 @@ class WinFileExplorer extends HTMLElement {
     this.trashBadge = this.shadowRoot.getElementById('trash-badge');
     this.trashBtn = this.shadowRoot.getElementById('btn-show-trash');
 
-    // v3: 开屏立即显示状态栏
     this.statusbar.update(0, 0);
 
-    this.shadowRoot.getElementById('btn-show-downloads').addEventListener('click', () => {
-      downloadManager.togglePanel();
-    });
-    this.trashBtn.addEventListener('click', () => {
-      this.loadTrash();
-    });
+    this.shadowRoot.getElementById('btn-show-downloads').addEventListener('click', () => downloadManager.togglePanel());
+    this.trashBtn.addEventListener('click', () => this.loadTrash());
 
     this.addEventListener('navigate', (e) => this.navigate(e.detail)); 
     this.addEventListener('tree-navigate', (e) => this.navigate(e.detail)); 
@@ -728,11 +752,8 @@ class WinFileExplorer extends HTMLElement {
     this.addEventListener('context', (e) => {
       const inTrashView = this.currentView === 'trash';
       const type = e.detail.type;
-      if (inTrashView) {
-        this.contextmenu.show(e.detail.x, e.detail.y, type === 'empty' ? 'trash-empty' : 'trash-item');
-      } else {
-        this.contextmenu.show(e.detail.x, e.detail.y, type);
-      }
+      if (inTrashView) this.contextmenu.show(e.detail.x, e.detail.y, type === 'empty' ? 'trash-empty' : 'trash-item');
+      else this.contextmenu.show(e.detail.x, e.detail.y, type);
     });
     this.addEventListener('selectionChange', (e) => this.statusbar.update(this.mainview.renderedItems.length, e.detail.length));
     
@@ -778,12 +799,17 @@ class WinFileExplorer extends HTMLElement {
       else if (e.key === 'F5') { e.preventDefault(); this.currentView === 'trash' ? this.loadTrash() : this.loadPath(this.currentPath, true); }
     });
 
-    this.rebuildTree(); 
-    this.navigate("C:");
+    try {
+      this.storageMode = await API.getMode();
+    } catch(e) { this.storageMode = 'disk'; }
+    this.statusbar.setMode(this.storageMode);
+
+    await this.rebuildTree(); 
+    const initialPath = this.storageMode === 'disk' ? '' : 'C:';
+    this.navigate(initialPath);
     this.refreshTrashBadge();
   }
 
-  // v3: 刷新回收站 badge
   async refreshTrashBadge() {
     try {
       const items = await API.getTrashList();
@@ -792,14 +818,13 @@ class WinFileExplorer extends HTMLElement {
     } catch(e) {}
   }
 
-  // v3: 加载回收站视图
   async loadTrash() {
     try {
       this.mainview.showSkeleton(true);
       const items = await API.getTrashList();
       this.currentView = 'trash';
       this.currentPath = '$TRASH';
-      this.addressbar.setPath('回收站', [{ path: '$TRASH', name: '回收站' }]);
+      this.addressbar.setPath('回收站', [{ path: '', name: '此电脑' }, { path: '$TRASH', name: '回收站' }]);
       this.addressbar.updateNavState(false, false, false);
       this.mainview.showSkeleton(false);
       this.mainview.setItems(items);
@@ -809,57 +834,69 @@ class WinFileExplorer extends HTMLElement {
     } catch (e) { this.mainview.showSkeleton(false); }
   }
 
+  // ============ v6 修改 1：磁盘模式支持树形展开 ============
   async rebuildTree() {
     const openPaths = new Set([...this.realTree.querySelectorAll('collapsible-item[open]')].map(el => el.getAttribute('path')));
-    this.realTree.innerHTML = ''; 
-    const rootItem = document.createElement('collapsible-item'); 
-    rootItem.setAttribute('label', 'C:'); 
-    rootItem.setAttribute('path', 'C:'); 
+    this.realTree.innerHTML = '';
+
+    const isDisk = this.storageMode === 'disk';
+    const rootLabel = isDisk ? '此电脑' : 'C:';
+    const rootPath = isDisk ? '' : 'C:';
+
+    const rootItem = document.createElement('collapsible-item');
+    rootItem.setAttribute('label', rootLabel);
+    rootItem.setAttribute('path', rootPath);
     this.realTree.appendChild(rootItem);
-    const restore = async (node, path) => { 
-      if (openPaths.has(path) || path === 'C:') { 
-        await this.loadTreeFolders(path, node, false); 
-        node.setAttribute('open', ''); 
-        for (let child of node.querySelectorAll('collapsible-item')) await restore(child, child.getAttribute('path')); 
-      } 
+
+    const restore = async (node, path) => {
+      // 根节点总是展开；其他节点之前打开过才恢复
+      if (path === rootPath || openPaths.has(path)) {
+        await this.loadTreeFolders(path, node, false);
+        node.setAttribute('open', '');
+        for (let child of node.querySelectorAll('collapsible-item')) {
+          await restore(child, child.getAttribute('path'));
+        }
+      }
     };
-    await restore(rootItem, 'C:'); 
+    await restore(rootItem, rootPath);
+
     if (this.currentView === 'explorer') this.syncTreeState(this.currentPath);
   }
 
   async loadTreeFolders(path, parentElement, doExpand = false) {
-    if(parentElement.hasAttribute('loaded')) return;
-    try { 
+    if (parentElement.hasAttribute('loaded')) return;
+    try {
       const items = await API.getFolderContents(path);
-      const folders = items.filter(i => i.type === 'folder'); 
-      parentElement.innerHTML = ''; 
-      folders.forEach(f => { 
-        const item = document.createElement('collapsible-item'); 
-        item.setAttribute('label', f.name); 
-        item.setAttribute('path', f.path); 
+      const folders = items.filter(i => i.type === 'folder');
+      parentElement.innerHTML = '';
+      folders.forEach(f => {
+        const item = document.createElement('collapsible-item');
+        item.setAttribute('label', f.name);
+        item.setAttribute('path', f.path);
         if (!f.hasSubFolders) item.setAttribute('leaf', '');
-        parentElement.appendChild(item); 
-      }); 
-      parentElement.setAttribute('loaded', 'true'); 
-      if(doExpand) parentElement.setAttribute('open', ''); 
+        parentElement.appendChild(item);
+      });
+      parentElement.setAttribute('loaded', 'true');
+      if (doExpand) parentElement.setAttribute('open', '');
     } catch(e) {}
   }
 
+  // ============ v6 修改 2：磁盘模式也支持自动展开同步 ============
   async syncTreeState(targetPath) {
-    const ancestors = await API.getAncestors(targetPath); 
+    const ancestors = await API.getAncestors(targetPath);
     let currentContainer = this.realTree;
-    for (const anc of ancestors) { 
-      let node = currentContainer.querySelector(`collapsible-item[path="${anc.path}"]`); 
-      if (node) { 
-        if (!node.hasAttribute('loaded')) await this.loadTreeFolders(anc.path, node, false); 
-        node.setAttribute('open', ''); 
-        currentContainer = node; 
-      } 
+    for (const anc of ancestors) {
+      let node = currentContainer.querySelector(`collapsible-item[path="${anc.path}"]`);
+      if (node) {
+        if (!node.hasAttribute('loaded')) await this.loadTreeFolders(anc.path, node, false);
+        node.setAttribute('open', '');
+        currentContainer = node;
+      }
     }
     this.realTree.querySelectorAll('[selected]').forEach(el => el.removeAttribute('selected'));
-    if(currentContainer !== this.realTree) { 
-      currentContainer.setAttribute('selected', ''); 
-      currentContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); 
+    if (currentContainer !== this.realTree) {
+      currentContainer.setAttribute('selected', '');
+      currentContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }
 
@@ -869,7 +906,7 @@ class WinFileExplorer extends HTMLElement {
     this.loadPath(path, isHistoryTravel); 
   }
   goBack() { 
-    if (this.currentView === 'trash') { this.navigate(this.history[this.historyIndex] || 'C:'); return; }
+    if (this.currentView === 'trash') { this.navigate(this.history[this.historyIndex] || ''); return; }
     if (this.historyIndex > 0) { this.historyIndex--; this.loadPath(this.history[this.historyIndex], true); } 
   }
   goForward() { 
@@ -877,7 +914,19 @@ class WinFileExplorer extends HTMLElement {
     if (this.historyIndex < this.history.length - 1) { this.historyIndex++; this.loadPath(this.history[this.historyIndex], true); } 
   }
   goUp() { 
-    if (this.currentView === 'trash') { this.navigate('C:'); return; }
+    if (this.currentView === 'trash') { this.navigate(''); return; }
+    if (this.currentPath === '' || this.currentPath === '/') return;
+    if (this.storageMode === 'disk') {
+      const parts = this.currentPath.split('/');
+      if (parts.length <= 1) {
+        this.loadPath('');
+        return;
+      }
+      parts.pop();
+      const parent = parts.join('/');
+      this.loadPath(parent === '' ? '' : parent);
+      return;
+    }
     if (this.currentPath !== 'C:') { const parts = this.currentPath.split('/'); parts.pop(); this.loadPath(parts.join('/')); } 
   }
 
@@ -889,8 +938,9 @@ class WinFileExplorer extends HTMLElement {
       this.currentView = 'explorer';
       this.currentPath = path; 
       if (!isHistoryTravel) { this.history = this.history.slice(0, this.historyIndex + 1); this.history.push(path); this.historyIndex++; }
-      this.addressbar.setPath(path, ancestors);
-      this.addressbar.updateNavState(this.historyIndex > 0, this.historyIndex < this.history.length - 1, path !== 'C:');
+      this.addressbar.setPath(path || '此电脑', ancestors);
+      const canUp = this.storageMode === 'disk' ? (path !== '' && path !== '/') : (path !== 'C:');
+      this.addressbar.updateNavState(this.historyIndex > 0, this.historyIndex < this.history.length - 1, canUp);
       this.mainview.showSkeleton(false); 
       this.mainview.setItems(items); 
       this.syncTreeState(path);
@@ -914,13 +964,13 @@ class WinFileExplorer extends HTMLElement {
     const selected = Array.from(this.mainview.selectedIds);
     const inTrash = this.currentView === 'trash';
     try {
-      // 回收站专属 action
       if (action === 'restore') {
         if (!selected.length) return showToast("请先选择要还原的项", true);
         await API.restoreFromTrash(selected);
         showToast(`已还原 ${selected.length} 项`);
         this.loadTrash();
         this.rebuildTree();
+        this.refreshTrashBadge();
         return;
       }
       if (action === 'delete-permanent') {
@@ -948,8 +998,6 @@ class WinFileExplorer extends HTMLElement {
       else if (action === 'selectnone') this.mainview.clearSelection();
       else if (action === 'open') { if(!inTrash && selected.length === 1 && this.mainview.items.find(i => i.path === selected[0])?.type === 'folder') this.loadPath(selected[0]); }
       else if (action === 'view-file') { if(!inTrash && selected.length === 1 && this.mainview.items.find(i => i.path === selected[0])?.type === 'file') this.showPreview(selected[0]); }
-      
-      // 复制
       else if (action === 'copy') {
         if (inTrash) return showToast("回收站中的项无法复制", true);
         if (!selected.length) return showToast("请先选择要复制的项", true);
@@ -957,7 +1005,6 @@ class WinFileExplorer extends HTMLElement {
         clipboard.paths = [...selected];
         showToast(`已复制 ${selected.length} 项到剪贴板`);
       }
-      // 剪切
       else if (action === 'cut') {
         if (inTrash) return showToast("回收站中的项无法剪切", true);
         if (!selected.length) return showToast("请先选择要剪切的项", true);
@@ -965,9 +1012,9 @@ class WinFileExplorer extends HTMLElement {
         clipboard.paths = [...selected];
         showToast(`已剪切 ${selected.length} 项到剪贴板`);
       }
-      // 粘贴
       else if (action === 'paste') {
         if (inTrash) return showToast("回收站不支持粘贴", true);
+        if (this.currentPath === '') return showToast("请在具体目录中粘贴", true);
         if (!clipboard.mode || !clipboard.paths.length) return showToast("剪贴板为空", true);
         if (clipboard.mode === 'copy') {
           await API.copyItems(clipboard.paths, this.currentPath);
@@ -982,7 +1029,6 @@ class WinFileExplorer extends HTMLElement {
           this.loadPath(this.currentPath, true);
         }
       }
-      // 撤销
       else if (action === 'undo') {
         await API.undo();
         showToast("已撤销上一步操作");
@@ -1000,7 +1046,7 @@ class WinFileExplorer extends HTMLElement {
              this.loadTrash();
            } else {
              await API.deleteItems(selected); 
-             if (selected.some(p => this.currentPath === p || this.currentPath.startsWith(p + '/'))) this.currentPath = 'C:'; 
+             if (selected.some(p => this.currentPath === p || this.currentPath.startsWith(p + '/'))) this.currentPath = this.storageMode === 'disk' ? '' : 'C:'; 
              this.rebuildTree(); 
              this.loadPath(this.currentPath, true); 
              showToast(`已删除 ${selected.length} 项到回收站`); 
@@ -1010,6 +1056,7 @@ class WinFileExplorer extends HTMLElement {
       }
       else if (action.startsWith('new')) {
          if (inTrash) return showToast("回收站中无法新建", true);
+         if (this.currentPath === '') return showToast("请在具体目录中新建", true);
          let type = 'file', ext = '.txt';
          if(action === 'newfolder') { type = 'folder'; ext = ''; }
          else if (action === 'newfile-md') ext = '.md';
@@ -1030,7 +1077,7 @@ class WinFileExplorer extends HTMLElement {
          if (!newName || newName === oldName) return; 
          if (!isValidName(newName)) return showToast("名称不合法", true);
          await API.renameItem(oldPath, newName); 
-         const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || 'C:';
+         const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || (this.storageMode === 'disk' ? '' : 'C:');
          if (this.currentPath === oldPath) this.currentPath = normalizePath(parentPath, newName); 
          else if (this.currentPath.startsWith(oldPath + '/')) this.currentPath = this.currentPath.replace(oldPath, normalizePath(parentPath, newName));
          this.rebuildTree(); 
@@ -1051,8 +1098,13 @@ class WinFileExplorer extends HTMLElement {
       else if (action === 'download') {
          if (inTrash) return showToast("回收站中的项无法下载", true);
          if(!selected.length) return showToast("请先选择要下载的项目", true);
-         selected.forEach(p => downloadManager.add(p));
-         showToast(`已添加 ${selected.length} 个下载任务`);
+         const files = selected.filter(p => {
+           const item = this.mainview.items.find(i => i.path === p);
+           return item && item.type === 'file';
+         });
+         if (!files.length) return showToast("请选择文件（文件夹暂不支持下载）", true);
+         files.forEach(p => downloadManager.add(p));
+         showToast(`已添加 ${files.length} 个下载任务（分片+SHA256 校验）`);
       }
     } catch(e) {}
   }
