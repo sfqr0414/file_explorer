@@ -1214,6 +1214,95 @@ func handleProperties(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, node)
 }
 
+// ============ v14: 直连下载（浏览器原生） ============
+
+// GET /api/download?path=xxx —— 直接返回完整文件流
+func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		writeError(w, 400, "缺少 path 参数")
+		return
+	}
+	if STORAGE_MODE == ModeVFS {
+		FS.mu.RLock()
+		node, ok := FS.data[path]
+		FS.mu.RUnlock()
+		if !ok || node.Type != "file" {
+			writeError(w, 404, "文件不存在")
+			return
+		}
+		size := node.Size
+		if size > 20*1024*1024 {
+			size = 20 * 1024 * 1024
+		}
+		if size < 4096 {
+			size = 4096
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, node.Name))
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+		chunk := make([]byte, 32*1024)
+		for i := range chunk {
+			chunk[i] = byte('A' + (i % 26))
+		}
+		remaining := size
+		for remaining > 0 {
+			n := int64(len(chunk))
+			if n > remaining {
+				n = remaining
+			}
+			if _, err := w.Write(chunk[:int(n)]); err != nil {
+				return
+			}
+			remaining -= n
+		}
+		return
+	}
+	absPath := toOSPath(path)
+	info, err := os.Stat(absPath)
+	if err != nil || info.IsDir() {
+		writeError(w, 404, "文件不存在")
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, info.Name()))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
+	f, err := os.Open(absPath)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	defer f.Close()
+	_, _ = io.Copy(w, f)
+}
+
+// GET /api/download/zip/file?token=xxx —— 直接返回完整 zip 流
+func handleZipFileDownload(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		writeError(w, 400, "缺少 token 参数")
+		return
+	}
+	zipMu.Lock()
+	task, ok := zipTasks[token]
+	zipMu.Unlock()
+	if !ok {
+		writeError(w, 404, "zip 任务不存在或已过期")
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, task.Name))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", task.Size))
+	f, err := os.Open(task.TempPath)
+	if err != nil {
+		writeError(w, 404, "zip 文件已丢失")
+		return
+	}
+	defer f.Close()
+	_, _ = io.Copy(w, f)
+}
+
+// 保留 meta / chunk 接口（向后兼容）
 func handleDownloadMeta(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if STORAGE_MODE == ModeVFS {
@@ -1331,6 +1420,7 @@ func handleDownloadChunk(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.CopyN(w, f, n)
 }
 
+// ============ zip 打包 ============
 func handleZipPrepare(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
@@ -1488,6 +1578,7 @@ func cleanupZipTasks() {
 	}
 }
 
+// ============ 上传 ============
 func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name       string `json:"name"`
@@ -1631,6 +1722,7 @@ func handleUploadCancel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
+// ============ 预览 ============
 func handlePreview(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if STORAGE_MODE == ModeVFS {
@@ -1751,16 +1843,22 @@ func main() {
 	mux.HandleFunc("/api/items/copy", handleCopy)
 	mux.HandleFunc("/api/items/undo", handleUndo)
 	mux.HandleFunc("/api/properties", handleProperties)
+	// 下载相关
 	mux.HandleFunc("/api/download/meta", handleDownloadMeta)
 	mux.HandleFunc("/api/download/chunk", handleDownloadChunk)
+	mux.HandleFunc("/api/download/zip/file", handleZipFileDownload)
 	mux.HandleFunc("/api/download/zip/prepare", handleZipPrepare)
 	mux.HandleFunc("/api/download/zip/chunk", handleZipChunk)
 	mux.HandleFunc("/api/download/zip/cleanup", handleZipCleanup)
+	mux.HandleFunc("/api/download", handleDownloadFile) // 精确匹配
+	// 上传
 	mux.HandleFunc("/api/upload/init", handleUploadInit)
 	mux.HandleFunc("/api/upload/chunk", handleUploadChunk)
 	mux.HandleFunc("/api/upload/complete", handleUploadComplete)
 	mux.HandleFunc("/api/upload/cancel", handleUploadCancel)
+	// 预览
 	mux.HandleFunc("/api/preview", handlePreview)
+	// 回收站
 	mux.HandleFunc("/api/trash", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -1772,6 +1870,7 @@ func main() {
 		}
 	})
 	mux.HandleFunc("/api/trash/restore", handleTrashRestore)
+	// 静态资源
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
 			http.ServeFile(w, r, "file_explorer.html")

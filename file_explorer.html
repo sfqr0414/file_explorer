@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Windows File Explorer - The Flawless Edition v13.1</title>
+  <title>Windows File Explorer - The Flawless Edition v14</title>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
   <style>
     :root {
@@ -92,9 +92,6 @@
     <div class="panel-header">
       <span>下载列表</span>
       <div class="panel-header-actions">
-        <label class="concurrency-label" title="并发分片下载数">并发
-          <input type="number" id="download-concurrency" min="1" max="16" value="4">
-        </label>
         <span class="panel-clear" id="download-clear">清空</span>
         <span class="modal-close" id="download-panel-close">✖</span>
       </div>
@@ -160,7 +157,7 @@ const showToast = (msg, isError = false) => { const container = document.getElem
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-const TRANSFER_CONFIG = { downloadConcurrency: 4, uploadConcurrency: 4 };
+const TRANSFER_CONFIG = { uploadConcurrency: 4 };
 
 const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8080' : '';
 axios.defaults.baseURL = API_BASE;
@@ -197,17 +194,13 @@ const API = {
   async restoreFromTrash(paths) { await axios.post('/api/trash/restore', { paths }); },
   async purgeTrash(paths) { await axios.delete('/api/trash', { data: { paths } }); },
   async clearTrash() { await axios.delete('/api/trash', { data: { all: true } }); },
+  // v14: 下载相关
   async getDownloadMeta(path) { const r = await axios.get('/api/download/meta', { params: { path } }); return r.data; },
-  async getDownloadChunk(path, index) {
-    const r = await axios.get('/api/download/chunk', { params: { path, index }, responseType: 'arraybuffer' });
-    return r.data;
-  },
   async zipPrepare(paths) { const r = await axios.post('/api/download/zip/prepare', { paths }); return r.data; },
-  async zipChunk(token, index) {
-    const r = await axios.get('/api/download/zip/chunk', { params: { token, index }, responseType: 'arraybuffer' });
-    return r.data;
-  },
   async zipCleanup(token) { await axios.delete('/api/download/zip/cleanup', { params: { token } }); },
+  downloadFileUrl(path) { return `${API_BASE}/api/download?path=${encodeURIComponent(path)}`; },
+  zipFileUrl(token) { return `${API_BASE}/api/download/zip/file?token=${encodeURIComponent(token)}`; },
+  // 上传
   async uploadInit(payload) { const r = await axios.post('/api/upload/init', payload); return r.data; },
   async uploadChunk(uploadId, index, blob) {
     await axios.put('/api/upload/chunk', blob, {
@@ -237,6 +230,7 @@ function updatePanelPositions() {
 }
 window.addEventListener('resize', updatePanelPositions);
 
+// ============ v14: DownloadManager 改为浏览器原生下载 ============
 class DownloadManager {
   constructor() {
     this.tasks = [];
@@ -252,131 +246,144 @@ class DownloadManager {
       if (!btn) return;
       e.stopPropagation();
       const id = btn.dataset.id, act = btn.dataset.act;
-      if (act === 'pause') this.pause(id);
-      else if (act === 'resume') this.resume(id);
-      else if (act === 'cancel') this.cancel(id);
-      else if (act === 'remove') this.removeTask(id);
+      if (act === 'remove') this.removeTask(id);
     });
   }
-  addFile(path) {
+
+  async addFile(path) {
     const name = path.split('/').pop() || path;
-    const task = { id: Date.now() + Math.random().toString(36).slice(2), name, path, isZip: false, status: 'downloading', paused: false, cancelled: false, progress: 0, hashOk: null, meta: null, downloaded: 0, totalChunks: 0, totalSize: 0 };
-    this.tasks.unshift(task); this.render(); this.panel.classList.add('show'); updatePanelPositions(); this._run(task);
-  }
-  async addZip(paths) {
-    const totalName = paths.length === 1 ? (paths[0].split('/').pop() + '.zip') : `${paths.length}项.zip`;
-    const task = { id: Date.now() + Math.random().toString(36).slice(2), name: totalName, paths, isZip: true, status: 'packing', paused: false, cancelled: false, progress: 0, hashOk: null, meta: null, zipToken: null, downloaded: 0, totalChunks: 0, totalSize: 0 };
-    this.tasks.unshift(task); this.render(); this.panel.classList.add('show'); updatePanelPositions();
+    const task = {
+      id: Date.now() + Math.random().toString(36).slice(2),
+      name, path, isZip: false,
+      status: 'downloading', progress: 0,
+      meta: null, totalSize: 0
+    };
+    this.tasks.unshift(task);
+    this.render();
+    this.panel.classList.add('show');
+    updatePanelPositions();
     try {
-      const meta = await API.zipPrepare(paths);
-      task.zipToken = meta.token; task.meta = meta; task.name = meta.name; task.status = 'downloading';
-      this.render(); this._run(task);
-    } catch (e) { task.status = 'error'; task.errorMsg = e.message; this.render(); }
-  }
-  async _run(task) {
-    try {
-      if (!task.isZip) task.meta = await API.getDownloadMeta(task.path);
-      const meta = task.meta;
-      const totalChunks = meta.totalChunks;
-      task.totalSize = meta.size; task.totalChunks = totalChunks; task.downloaded = 0;
-      const chunks = new Array(totalChunks);
-      const concurrency = Math.max(1, TRANSFER_CONFIG.downloadConcurrency);
-      let nextIndex = 0;
-      const worker = async () => {
-        while (true) {
-          if (task.cancelled) throw new Error('__CANCELLED__');
-          while (task.paused && !task.cancelled) await sleep(150);
-          if (task.cancelled) throw new Error('__CANCELLED__');
-          const idx = nextIndex++;
-          if (idx >= totalChunks) return;
-          let buf;
-          if (task.isZip) buf = await API.zipChunk(task.zipToken, idx);
-          else buf = await API.getDownloadChunk(task.path, idx);
-          chunks[idx] = buf; task.downloaded++;
-          task.progress = Math.round((task.downloaded / totalChunks) * 80);
-          this.render();
-        }
-      };
-      const workers = [];
-      for (let i = 0; i < concurrency; i++) workers.push(worker());
-      await Promise.all(workers);
-      task.status = 'merging'; task.progress = 85; this.render();
-      const blob = new Blob(chunks, { type: 'application/octet-stream' });
-      if (meta.sha256 && meta.size > 0 && meta.size <= 500 * 1024 * 1024 && crypto?.subtle) {
-        task.status = 'hashing'; task.progress = 90; this.render();
-        try {
-          const arrayBuf = await blob.arrayBuffer();
-          const hashBuf = await crypto.subtle.digest('SHA-256', arrayBuf);
-          const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
-          if (hashHex !== meta.sha256) { task.hashOk = false; throw new Error('SHA-256 校验失败'); }
-          task.hashOk = true;
-        } catch (e) { if (e.message.includes('SHA-256')) throw e; task.hashOk = null; }
-      }
-      task.progress = 100; task.status = 'completed'; this.render();
-      if (task.hashOk === true) showToast(`✓ 已下载并校验通过: ${task.name}`);
-      else if (task.hashOk === false) showToast(`⚠ 校验失败: ${task.name}`, true);
-      else showToast(`✓ 已下载: ${task.name}`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = meta.name || task.name;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-      if (task.isZip && task.zipToken) API.zipCleanup(task.zipToken).catch(() => {});
-    } catch (e) {
-      if (task.cancelled) { task.status = 'cancelled'; if (task.isZip && task.zipToken) API.zipCleanup(task.zipToken).catch(() => {}); }
-      else { task.status = 'error'; task.errorMsg = e.message || '下载失败'; }
+      task.meta = await API.getDownloadMeta(path);
+      task.totalSize = task.meta.size;
+      if (task.meta.name) task.name = task.meta.name;
       this.render();
+      this._triggerBrowserDownload(API.downloadFileUrl(path), task.name);
+      task.progress = 100;
+      task.status = 'completed';
+      this.render();
+      showToast(`✓ 已开始下载: ${task.name}`);
+    } catch (e) {
+      task.status = 'error';
+      task.errorMsg = e.message || '下载失败';
+      this.render();
+      showToast(`下载失败: ${task.errorMsg}`, true);
     }
   }
-  pause(id) { const t = this.tasks.find(x => x.id === id); if (t && ['downloading', 'merging', 'hashing'].includes(t.status)) { t.paused = true; t.statusBeforePause = t.status; t.status = 'paused'; this.render(); } }
-  resume(id) { const t = this.tasks.find(x => x.id === id); if (t && t.status === 'paused') { t.paused = false; t.status = t.statusBeforePause || 'downloading'; this.render(); } }
-  cancel(id) { const t = this.tasks.find(x => x.id === id); if (!t) return; if (['completed', 'error', 'cancelled'].includes(t.status)) { this.removeTask(id); return; } t.cancelled = true; t.paused = false; this.render(); }
-  removeTask(id) { this.tasks = this.tasks.filter(t => t.id !== id); this.render(); if (this.tasks.length === 0) { this.panel.classList.remove('show'); updatePanelPositions(); } }
-  clearCompleted() { const before = this.tasks.length; this.tasks = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)); const removed = before - this.tasks.length; this.render(); if (this.tasks.length === 0) { this.panel.classList.remove('show'); updatePanelPositions(); } if (removed > 0) showToast(`已清理 ${removed} 条下载记录`); }
+
+  async addZip(paths) {
+    const totalName = paths.length === 1 ? (paths[0].split('/').pop() + '.zip') : `${paths.length}项.zip`;
+    const task = {
+      id: Date.now() + Math.random().toString(36).slice(2),
+      name: totalName, paths, isZip: true,
+      status: 'packing', progress: 0,
+      meta: null, zipToken: null, totalSize: 0
+    };
+    this.tasks.unshift(task);
+    this.render();
+    this.panel.classList.add('show');
+    updatePanelPositions();
+    try {
+      const meta = await API.zipPrepare(paths);
+      task.zipToken = meta.token;
+      task.meta = meta;
+      if (meta.name) task.name = meta.name;
+      task.totalSize = meta.size;
+      task.status = 'downloading';
+      this.render();
+      this._triggerBrowserDownload(API.zipFileUrl(task.zipToken), task.name);
+      task.progress = 100;
+      task.status = 'completed';
+      this.render();
+      showToast(`✓ 已开始下载: ${task.name}`);
+      // 5 分钟后清理服务端 zip 临时文件（有后端 1 小时兜底）
+      const token = task.zipToken;
+      setTimeout(() => { API.zipCleanup(token).catch(() => {}); }, 5 * 60 * 1000);
+    } catch (e) {
+      task.status = 'error';
+      task.errorMsg = e.message || '打包失败';
+      this.render();
+      showToast(`打包失败: ${task.errorMsg}`, true);
+    }
+  }
+
+  _triggerBrowserDownload(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'download';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 1000);
+  }
+
+  removeTask(id) {
+    this.tasks = this.tasks.filter(t => t.id !== id);
+    this.render();
+    if (this.tasks.length === 0) { this.panel.classList.remove('show'); updatePanelPositions(); }
+  }
+
+  clearCompleted() {
+    const before = this.tasks.length;
+    this.tasks = this.tasks.filter(t => t.status !== 'completed' && t.status !== 'error');
+    const removed = before - this.tasks.length;
+    this.render();
+    if (this.tasks.length === 0) { this.panel.classList.remove('show'); updatePanelPositions(); }
+    if (removed > 0) showToast(`已清理 ${removed} 条下载记录`);
+  }
+
   togglePanel() { this.panel.classList.toggle('show'); updatePanelPositions(); }
-  updateBadge(badgeEl) { if (!badgeEl) return; const active = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)).length; if (active > 0) { badgeEl.textContent = active; badgeEl.classList.add('show'); } else { badgeEl.classList.remove('show'); } }
+
+  updateBadge(badgeEl) {
+    if (!badgeEl) return;
+    const active = this.tasks.filter(t => t.status === 'downloading' || t.status === 'packing').length;
+    if (active > 0) { badgeEl.textContent = active; badgeEl.classList.add('show'); }
+    else { badgeEl.classList.remove('show'); }
+  }
+
   render() {
     if (this.badge) this.updateBadge(this.badge);
     requestAnimationFrame(updatePanelPositions);
-    if (this.tasks.length === 0) { this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`; return; }
+    if (this.tasks.length === 0) {
+      this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`;
+      return;
+    }
     this.list.innerHTML = this.tasks.map(t => {
       let statusText = '', statusClass = '';
-      const isActive = ['downloading', 'merging', 'hashing'].includes(t.status);
       switch (t.status) {
-        case 'packing': statusText = '打包中...'; break;
-        case 'downloading': statusText = Math.floor(t.progress) + '%'; break;
-        case 'merging': statusText = '合并中...'; break;
-        case 'hashing': statusText = '校验中...'; break;
-        case 'paused': statusText = '已暂停'; statusClass = 'warn'; break;
-        case 'cancelled': statusText = '已取消'; statusClass = 'err'; break;
-        case 'completed':
-          if (t.hashOk === true) { statusText = '✓ 校验通过'; statusClass = 'ok'; }
-          else if (t.hashOk === false) { statusText = '✗ 校验失败'; statusClass = 'err'; }
-          else { statusText = '已完成'; statusClass = 'ok'; }
-          break;
-        case 'error': statusText = '失败'; statusClass = 'err'; break;
+        case 'packing': statusText = '打包中...'; statusClass = 'warn'; break;
+        case 'downloading': statusText = '准备下载...'; statusClass = 'warn'; break;
+        case 'completed': statusText = '✓ 已交给浏览器'; statusClass = 'ok'; break;
+        case 'error': statusText = '✗ 失败'; statusClass = 'err'; break;
       }
-      const barColor = (t.status === 'error' || t.hashOk === false) ? 'background:#E5484D;'
-                     : t.hashOk === true ? 'background:#2f9e44;'
-                     : t.status === 'paused' ? 'background:#f08c00;'
-                     : t.status === 'hashing' ? 'background:#f08c00;' : '';
-      const canPause = isActive || t.status === 'packing';
-      const canResume = t.status === 'paused';
-      const canCancel = canPause || canResume;
-      const canRemove = !canPause && !canResume;
-      let actions = '';
-      if (canPause) actions += `<button class="task-btn" data-act="pause" data-id="${t.id}" title="暂停">❚❚</button>`;
-      if (canResume) actions += `<button class="task-btn" data-act="resume" data-id="${t.id}" title="继续">▶</button>`;
-      if (canCancel) actions += `<button class="task-btn danger" data-act="cancel" data-id="${t.id}" title="取消">✖</button>`;
-      if (canRemove) actions += `<button class="task-btn" data-act="remove" data-id="${t.id}" title="移除">✖</button>`;
-      const meta = t.totalSize ? `${formatBytes(t.totalSize)}` : (t.meta ? formatBytes(t.meta.size) : '');
-      const metaLine = meta ? `<div class="task-meta">${meta}${t.isZip ? ' · ZIP' : ''}${t.totalChunks ? ' · ' + t.downloaded + '/' + t.totalChunks : ''}</div>` : '';
-      return `<div class="task-item"><div class="task-item-header"><span class="task-item-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span><span class="task-item-status ${statusClass}">${statusText}</span><span class="task-item-actions">${actions}</span></div><div class="task-progress"><div class="task-progress-bar ${t.status === 'hashing' ? 'hash' : ''}" style="width: ${t.progress}%; ${barColor}"></div></div>${metaLine}</div>`;
+      const barColor = t.status === 'error' ? 'background:#E5484D;' : t.status === 'completed' ? 'background:#2f9e44;' : 'background:#f08c00;';
+      let actions = `<button class="task-btn" data-act="remove" data-id="${t.id}" title="移除记录">✖</button>`;
+      const meta = t.totalSize ? formatBytes(t.totalSize) : '';
+      const metaLine = meta ? `<div class="task-meta">${meta}${t.isZip ? ' · ZIP' : ''}</div>` : '';
+      return `<div class="task-item">
+        <div class="task-item-header">
+          <span class="task-item-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+          <span class="task-item-status ${statusClass}">${statusText}</span>
+          <span class="task-item-actions">${actions}</span>
+        </div>
+        <div class="task-progress"><div class="task-progress-bar" style="width: ${t.progress}%; ${barColor}"></div></div>
+        ${metaLine}
+      </div>`;
     }).join('');
   }
 }
 const downloadManager = new DownloadManager();
 
+// ============ 上传管理器（不变） ============
 class UploadManager {
   constructor() {
     this.tasks = [];
@@ -503,9 +510,7 @@ class CollapsibleItem extends HTMLElement {
       fold.dataset.state = 'opening';
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (fold.dataset.state === 'opening') {
-            fold.dataset.state = 'open';
-          }
+          if (fold.dataset.state === 'opening') { fold.dataset.state = 'open'; }
         });
       });
     } else {
@@ -514,16 +519,10 @@ class CollapsibleItem extends HTMLElement {
       const finish = () => {
         if (done) return;
         done = true;
-        if (fold.dataset.state === 'closing') {
-          fold.style.display = 'none';
-          fold.dataset.state = 'closed';
-        }
+        if (fold.dataset.state === 'closing') { fold.style.display = 'none'; fold.dataset.state = 'closed'; }
       };
       fold.addEventListener('transitionend', function onEnd(e) {
-        if (e.propertyName === 'grid-template-rows') {
-          finish();
-          fold.removeEventListener('transitionend', onEnd);
-        }
+        if (e.propertyName === 'grid-template-rows') { finish(); fold.removeEventListener('transitionend', onEnd); }
       });
       setTimeout(finish, 320);
     }
@@ -538,12 +537,7 @@ class CollapsibleItem extends HTMLElement {
       <style>
         :host { display: block; width: 100%; box-sizing: border-box; }
         .toggle { display: none; }
-        .item-header {
-          display: flex; align-items: center; padding: 2px 4px; margin: 1px 0;
-          cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: 500;
-          transition: background 0.1s; white-space: nowrap;
-          min-width: 100%; width: max-content; box-sizing: border-box;
-        }
+        .item-header { display: flex; align-items: center; padding: 2px 4px; margin: 1px 0; cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: 500; transition: background 0.1s; white-space: nowrap; min-width: 100%; width: max-content; box-sizing: border-box; }
         .item-header:hover { background: var(--slate-4); }
         .item-header:focus-visible { outline: 2px solid var(--blue-9); }
         .icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -554,24 +548,12 @@ class CollapsibleItem extends HTMLElement {
         .text { padding: 4px 10px; border-radius: 4px; white-space: nowrap; display: flex; align-items: center; }
         .text:hover { background: rgba(0,0,0,0.08); }
         .fold { display: none; }
-        .fold[data-state="open"],
-        .fold[data-state="opening"],
-        .fold[data-state="closing"] {
-          display: grid;
-          width: max-content;
-          min-width: 100%;
-          box-sizing: border-box;
-          grid-template-rows: 0fr;
-          transition: grid-template-rows 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+        .fold[data-state="open"], .fold[data-state="opening"], .fold[data-state="closing"] {
+          display: grid; width: max-content; min-width: 100%; box-sizing: border-box;
+          grid-template-rows: 0fr; transition: grid-template-rows 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
         }
         .fold[data-state="open"] { grid-template-rows: 1fr; }
-        .fold > .content {
-          min-height: 0;
-          overflow: hidden;
-          padding-left: 10px;
-          display: flex;
-          flex-direction: column;
-        }
+        .fold > .content { min-height: 0; overflow: hidden; padding-left: 10px; display: flex; flex-direction: column; }
         :host([selected]) > .item-header { background: var(--blue-4) !important; color: var(--blue-11); }
       </style>
       <input type="checkbox" id="${id}" class="toggle" ${isOpen ? 'checked' : ''}>
@@ -581,29 +563,22 @@ class CollapsibleItem extends HTMLElement {
       </label>
       <div class="fold" data-state="${isOpen ? 'open' : 'closed'}" style="${isOpen ? '' : 'display: none;'}">
         <div class="content"><slot></slot></div>
-      </div>
-    `;
+      </div>`;
     const checkbox = this.shadowRoot.getElementById(id);
     const headerEl = this.shadowRoot.querySelector('.item-header');
-
     checkbox.addEventListener('change', () => {
       this._handleToggle(checkbox.checked);
       if (checkbox.checked && !this.hasAttribute('loaded')) {
         this.dispatchEvent(new CustomEvent('tree-load', { detail: { path: this.getAttribute('path') || '', el: this }, bubbles: true, composed: true }));
       }
     });
-
     headerEl.addEventListener('click', (e) => {
       if (e.target.closest('.text')) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         this.dispatchEvent(new CustomEvent('tree-navigate', { detail: this.getAttribute('path') || '', bubbles: true, composed: true }));
         return;
       }
-      if (this.hasAttribute('leaf')) {
-        e.preventDefault();
-        return;
-      }
+      if (this.hasAttribute('leaf')) { e.preventDefault(); return; }
     });
   }
 }
@@ -747,12 +722,7 @@ class FMMainView extends HTMLElement {
     this.initInteractionEngine();
     this.initHeaderResizer();
     this.scroller.addEventListener('dblclick', (e) => {
-      if (this._suppressDblclick) {
-        this._suppressDblclick = false;
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
+      if (this._suppressDblclick) { this._suppressDblclick = false; e.preventDefault(); e.stopPropagation(); return; }
       if (this.isLoading) return;
       const el = e.target.closest('.item');
       if (!el) return;
@@ -770,12 +740,10 @@ class FMMainView extends HTMLElement {
       }
     });
   }
-  // ============ v13.1 修复 ============
   setLoading(loading) {
     const wasLoading = this.isLoading;
     this.isLoading = loading;
     this.viewport.classList.toggle('loading', loading);
-    // 从 loading 恢复到非 loading：强制重绘，避免 setItems 时被 skip
     if (wasLoading && !loading) {
       requestAnimationFrame(() => this.renderVisibleItems());
     }
@@ -1261,17 +1229,7 @@ class WinFileExplorer extends HTMLElement {
       else if (e.key === 'F5') { e.preventDefault(); this.currentView === 'trash' ? this.loadTrash() : this.loadPath(this.currentPath, true); }
     });
 
-    const dConc = document.getElementById('download-concurrency');
     const uConc = document.getElementById('upload-concurrency');
-    if (dConc) {
-      dConc.value = TRANSFER_CONFIG.downloadConcurrency;
-      dConc.addEventListener('change', (e) => {
-        const v = Math.max(1, Math.min(16, parseInt(e.target.value) || 4));
-        TRANSFER_CONFIG.downloadConcurrency = v;
-        e.target.value = v;
-        showToast(`下载并发数已设为 ${v}`);
-      });
-    }
     if (uConc) {
       uConc.value = TRANSFER_CONFIG.uploadConcurrency;
       uConc.addEventListener('change', (e) => {
