@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Windows File Explorer - The Flawless Edition v8</title>
+  <title>Windows File Explorer - The Flawless Edition v13</title>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
   <style>
     :root {
@@ -38,22 +38,22 @@
     .modal-body { padding: 16px; font-size: 13px; line-height: 1.8; color: var(--slate-12); overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
     .prop-row { display: flex; border-bottom: 1px dashed var(--slate-3); padding: 6px 0; }
     .prop-row span:first-child { width: 80px; color: var(--slate-8); flex-shrink: 0; }
-    /* 下载/上传面板 */
-    .download-panel, .upload-panel { position: fixed; right: 20px; width: 400px; background: white; border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 4000; display: flex; flex-direction: column; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s; backdrop-filter: blur(10px); }
+    .download-panel, .upload-panel { position: fixed; right: 20px; width: 400px; max-width: calc(100vw - 40px); background: white; border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 4000; display: flex; flex-direction: column; opacity: 0; visibility: hidden; transform: translateY(10px); transition: opacity 0.2s, transform 0.2s; backdrop-filter: blur(10px); }
     .download-panel { bottom: 60px; }
     .upload-panel { bottom: 60px; }
     .download-panel.show, .upload-panel.show { opacity: 1; visibility: visible; transform: translateY(0); }
-    .download-panel.shift { bottom: 420px; }
-    .upload-panel.shift { bottom: 420px; }
-    .panel-header { padding: 10px 16px; border-bottom: 1px solid var(--slate-4); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; background: var(--slate-2); border-radius: 8px 8px 0 0; }
-    .panel-header-actions { display: flex; align-items: center; gap: 12px; }
+    .panel-header { padding: 10px 16px; border-bottom: 1px solid var(--slate-4); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; background: var(--slate-2); border-radius: 8px 8px 0 0; flex-shrink: 0; }
+    .panel-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; }
     .panel-clear { cursor: pointer; color: var(--slate-8); font-size: 12px; font-weight: 500; }
     .panel-clear:hover { color: var(--blue-9); }
+    .concurrency-label { font-size: 11px; color: var(--slate-8); display: flex; align-items: center; gap: 4px; }
+    .concurrency-label input { width: 46px; padding: 2px 4px; font-size: 11px; border: 1px solid var(--slate-4); border-radius: 3px; outline: none; background: white; }
+    .concurrency-label input:focus { border-color: var(--blue-9); }
     .panel-body { padding: 8px; max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-    .task-item { font-size: 12px; padding: 8px; border: 1px solid var(--slate-3); border-radius: 6px; background: var(--slate-1); }
+    .task-item { font-size: 12px; padding: 8px; border: 1px solid var(--slate-3); border-radius: 6px; background: var(--slate-1); min-width: 0; }
     .task-item:hover { border-color: var(--slate-5); }
-    .task-item-header { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; gap: 6px; }
-    .task-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-weight: 500; color: var(--slate-12); }
+    .task-item-header { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; gap: 6px; min-width: 0; }
+    .task-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; font-weight: 500; color: var(--slate-12); }
     .task-item-status { color: var(--slate-8); flex-shrink: 0; font-size: 11px; }
     .task-item-status.ok { color: #2f9e44; }
     .task-item-status.err { color: #E5484D; }
@@ -65,7 +65,19 @@
     .task-progress { height: 4px; background: var(--slate-4); border-radius: 2px; overflow: hidden; margin-bottom: 4px; }
     .task-progress-bar { height: 100%; background: var(--blue-9); width: 0%; transition: width 0.2s; }
     .task-progress-bar.hash { background: #f08c00; }
-    .task-meta { color: var(--slate-8); font-size: 10px; }
+    .task-meta { color: var(--slate-8); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 768px) {
+      .download-panel, .upload-panel { left: 8px; right: 8px; width: auto; max-width: none; }
+      .panel-body { max-height: 200px; }
+      .task-item-name { max-width: 40vw; }
+      .modal-box.large { width: 95vw; height: 80vh; }
+      .modal-box { width: 95vw; max-width: 360px; }
+    }
+    @media (max-width: 480px) {
+      .panel-body { max-height: 160px; }
+      .concurrency-label { font-size: 0; }
+      .concurrency-label input { width: 36px; font-size: 11px; }
+    }
   </style>
 </head>
 <body>
@@ -76,11 +88,13 @@
   <div class="modal-overlay" id="prop-modal"><div class="modal-box"><div class="modal-header"><span id="prop-title">文件属性</span><span class="modal-close" onclick="document.getElementById('prop-modal').classList.remove('active')">✖</span></div><div class="modal-body" id="prop-body"></div></div></div>
   <div class="modal-overlay" id="preview-modal"><div class="modal-box large"><div class="modal-header"><span id="preview-title">文件查看</span><span class="modal-close" onclick="document.getElementById('preview-modal').classList.remove('active')">✖</span></div><div class="modal-body" id="preview-body" style="padding: 0; background: var(--slate-1);"></div></div></div>
   
-  <!-- 下载面板 -->
   <div class="download-panel" id="download-panel">
     <div class="panel-header">
       <span>下载列表</span>
       <div class="panel-header-actions">
+        <label class="concurrency-label" title="并发分片下载数">并发
+          <input type="number" id="download-concurrency" min="1" max="16" value="4">
+        </label>
         <span class="panel-clear" id="download-clear">清空</span>
         <span class="modal-close" id="download-panel-close">✖</span>
       </div>
@@ -88,11 +102,13 @@
     <div class="panel-body" id="download-list"></div>
   </div>
 
-  <!-- 上传面板 -->
   <div class="upload-panel" id="upload-panel">
     <div class="panel-header">
       <span>上传列表</span>
       <div class="panel-header-actions">
+        <label class="concurrency-label" title="并发分片上传数">并发
+          <input type="number" id="upload-concurrency" min="1" max="16" value="4">
+        </label>
         <span class="panel-clear" id="upload-clear">清空</span>
         <span class="modal-close" id="upload-panel-close">✖</span>
       </div>
@@ -121,9 +137,7 @@ const SVGS = {
   download: '<path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>',
   upload: '<path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/>',
   trash: '<path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>',
-  computer: '<path d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/>',
-  play: '<path d="M8 5v14l11-7z"/>',
-  pause: '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'
+  computer: '<path d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/>'
 };
 const getSvg = (key, color='#8f8f8f') => `<svg viewBox="0 0 24 24" fill="${color}" style="width:100%;height:100%; display:block;">${SVGS[key]||SVGS.file}</svg>`;
 const getFileIconSvg = (name, type) => {
@@ -144,11 +158,13 @@ const isValidName = (name) => name && name.trim().length > 0 && !/[\\/:*?"<>|]/.
 const formatBytes = (bytes) => { if(!bytes || bytes===0) return '0 B'; const k=1024, dm=1, sizes=['B','KB','MB','GB'], i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(dm))+' '+sizes[i]; };
 const showToast = (msg, isError = false) => { const container = document.getElementById('toast-container'), toast = document.createElement('div'); toast.className = 'toast'; toast.style.backgroundColor = isError ? 'rgba(229,72,77,0.9)' : ''; toast.innerText = msg; container.appendChild(toast); setTimeout(() => { toast.style.opacity='0'; setTimeout(()=>toast.remove(),300); }, 3500); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const TRANSFER_CONFIG = { downloadConcurrency: 4, uploadConcurrency: 4 };
 
 const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8080' : '';
 axios.defaults.baseURL = API_BASE;
-axios.defaults.timeout = 0; // 无超时
+axios.defaults.timeout = 0;
 axios.interceptors.response.use(res => res, err => {
   const msg = err.response?.data?.error || err.message || '网络错误';
   showToast(msg, true);
@@ -157,16 +173,9 @@ axios.interceptors.response.use(res => res, err => {
 
 const clipboard = { mode: null, paths: [] };
 
-// 计算文件 SHA-256（受 crypto.subtle 可用性限制）
 async function computeFileSha256(file, onProgress) {
-  if (!crypto?.subtle) {
-    console.warn('crypto.subtle 不可用（非 HTTPS），跳过 SHA-256');
-    return "";
-  }
-  if (file.size > 500 * 1024 * 1024) {
-    console.warn('文件过大，跳过 SHA-256');
-    return "";
-  }
+  if (!crypto?.subtle) { console.warn('crypto.subtle 不可用，跳过 SHA-256'); return ""; }
+  if (file.size > 500 * 1024 * 1024) { console.warn('文件过大，跳过 SHA-256'); return ""; }
   const buf = await file.arrayBuffer();
   if (onProgress) onProgress(100);
   const hashBuf = await crypto.subtle.digest('SHA-256', buf);
@@ -199,7 +208,6 @@ const API = {
     return r.data;
   },
   async zipCleanup(token) { await axios.delete('/api/download/zip/cleanup', { params: { token } }); },
-
   async uploadInit(payload) { const r = await axios.post('/api/upload/init', payload); return r.data; },
   async uploadChunk(uploadId, index, blob) {
     await axios.put('/api/upload/chunk', blob, {
@@ -212,220 +220,125 @@ const API = {
   previewUrl(path) { return `${API_BASE}/api/preview?path=${encodeURIComponent(path)}`; }
 };
 
-// ===================== 下载管理器 =====================
+function updatePanelPositions() {
+  const dPanel = document.getElementById('download-panel');
+  const uPanel = document.getElementById('upload-panel');
+  const dShow = dPanel.classList.contains('show');
+  const uShow = uPanel.classList.contains('show');
+  if (dShow) dPanel.style.bottom = '60px';
+  if (uShow) {
+    if (dShow) {
+      const dH = dPanel.offsetHeight;
+      uPanel.style.bottom = (60 + dH + 8) + 'px';
+    } else {
+      uPanel.style.bottom = '60px';
+    }
+  }
+}
+window.addEventListener('resize', updatePanelPositions);
+
 class DownloadManager {
   constructor() {
     this.tasks = [];
     this.panel = document.getElementById('download-panel');
     this.list = document.getElementById('download-list');
-    this.badge = null; // 侧边栏 badge 稍后绑定
+    this.badge = null;
     this.clearBtn = document.getElementById('download-clear');
     this.closeBtn = document.getElementById('download-panel-close');
     if (this.clearBtn) this.clearBtn.addEventListener('click', (e) => { e.stopPropagation(); this.clearCompleted(); });
-    if (this.closeBtn) this.closeBtn.addEventListener('click', () => { this.panel.classList.remove('show'); });
+    if (this.closeBtn) this.closeBtn.addEventListener('click', () => { this.panel.classList.remove('show'); updatePanelPositions(); });
     this.list.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-act]');
       if (!btn) return;
       e.stopPropagation();
-      const id = btn.dataset.id;
-      const act = btn.dataset.act;
+      const id = btn.dataset.id, act = btn.dataset.act;
       if (act === 'pause') this.pause(id);
       else if (act === 'resume') this.resume(id);
       else if (act === 'cancel') this.cancel(id);
       else if (act === 'remove') this.removeTask(id);
     });
   }
-
-  // 单个文件
   addFile(path) {
     const name = path.split('/').pop() || path;
-    const task = {
-      id: Date.now() + Math.random().toString(36).slice(2),
-      name, path, isZip: false,
-      status: 'downloading', paused: false, cancelled: false,
-      progress: 0, hashOk: null, chunks: [], meta: null
-    };
-    this.tasks.unshift(task);
-    this.render();
-    this.panel.classList.add('show');
-    this._run(task);
+    const task = { id: Date.now() + Math.random().toString(36).slice(2), name, path, isZip: false, status: 'downloading', paused: false, cancelled: false, progress: 0, hashOk: null, meta: null, downloaded: 0, totalChunks: 0, totalSize: 0 };
+    this.tasks.unshift(task); this.render(); this.panel.classList.add('show'); updatePanelPositions(); this._run(task);
   }
-
-  // 多个目录/文件打包 zip
   async addZip(paths) {
     const totalName = paths.length === 1 ? (paths[0].split('/').pop() + '.zip') : `${paths.length}项.zip`;
-    const task = {
-      id: Date.now() + Math.random().toString(36).slice(2),
-      name: totalName, paths, isZip: true,
-      status: 'packing', paused: false, cancelled: false,
-      progress: 0, hashOk: null, chunks: [], meta: null, zipToken: null
-    };
-    this.tasks.unshift(task);
-    this.render();
-    this.panel.classList.add('show');
+    const task = { id: Date.now() + Math.random().toString(36).slice(2), name: totalName, paths, isZip: true, status: 'packing', paused: false, cancelled: false, progress: 0, hashOk: null, meta: null, zipToken: null, downloaded: 0, totalChunks: 0, totalSize: 0 };
+    this.tasks.unshift(task); this.render(); this.panel.classList.add('show'); updatePanelPositions();
     try {
       const meta = await API.zipPrepare(paths);
-      task.zipToken = meta.token;
-      task.meta = meta;
-      task.name = meta.name;
-      task.status = 'downloading';
-      this.render();
-      this._run(task);
-    } catch (e) {
-      task.status = 'error';
-      task.errorMsg = e.message;
-      this.render();
-    }
+      task.zipToken = meta.token; task.meta = meta; task.name = meta.name; task.status = 'downloading';
+      this.render(); this._run(task);
+    } catch (e) { task.status = 'error'; task.errorMsg = e.message; this.render(); }
   }
-
   async _run(task) {
     try {
-      // 获取 meta
-      if (!task.isZip) {
-        task.meta = await API.getDownloadMeta(task.path);
-      }
+      if (!task.isZip) task.meta = await API.getDownloadMeta(task.path);
       const meta = task.meta;
       const totalChunks = meta.totalChunks;
-      task.totalSize = meta.size;
-
-      // 分片下载循环
-      while (task.chunks.length < totalChunks) {
-        if (task.cancelled) throw new Error('__CANCELLED__');
-        while (task.paused && !task.cancelled) await sleep(200);
-        if (task.cancelled) throw new Error('__CANCELLED__');
-
-        const idx = task.chunks.length;
-        let buf;
-        if (task.isZip) {
-          buf = await API.zipChunk(task.zipToken, idx);
-        } else {
-          buf = await API.getDownloadChunk(task.path, idx);
+      task.totalSize = meta.size; task.totalChunks = totalChunks; task.downloaded = 0;
+      const chunks = new Array(totalChunks);
+      const concurrency = Math.max(1, TRANSFER_CONFIG.downloadConcurrency);
+      let nextIndex = 0;
+      const worker = async () => {
+        while (true) {
+          if (task.cancelled) throw new Error('__CANCELLED__');
+          while (task.paused && !task.cancelled) await sleep(150);
+          if (task.cancelled) throw new Error('__CANCELLED__');
+          const idx = nextIndex++;
+          if (idx >= totalChunks) return;
+          let buf;
+          if (task.isZip) buf = await API.zipChunk(task.zipToken, idx);
+          else buf = await API.getDownloadChunk(task.path, idx);
+          chunks[idx] = buf; task.downloaded++;
+          task.progress = Math.round((task.downloaded / totalChunks) * 80);
+          this.render();
         }
-        task.chunks.push(buf);
-        task.progress = Math.round(((idx + 1) / totalChunks) * 80);
-        this.render();
-      }
-
-      // 合并
-      task.status = 'merging';
-      task.progress = 85;
-      this.render();
-      const blob = new Blob(task.chunks, { type: 'application/octet-stream' });
-
-      // SHA-256 校验
+      };
+      const workers = [];
+      for (let i = 0; i < concurrency; i++) workers.push(worker());
+      await Promise.all(workers);
+      task.status = 'merging'; task.progress = 85; this.render();
+      const blob = new Blob(chunks, { type: 'application/octet-stream' });
       if (meta.sha256 && meta.size > 0 && meta.size <= 500 * 1024 * 1024 && crypto?.subtle) {
-        task.status = 'hashing';
-        task.progress = 90;
-        this.render();
+        task.status = 'hashing'; task.progress = 90; this.render();
         try {
           const arrayBuf = await blob.arrayBuffer();
           const hashBuf = await crypto.subtle.digest('SHA-256', arrayBuf);
           const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
-          if (hashHex !== meta.sha256) {
-            task.hashOk = false;
-            throw new Error('SHA-256 校验失败');
-          }
+          if (hashHex !== meta.sha256) { task.hashOk = false; throw new Error('SHA-256 校验失败'); }
           task.hashOk = true;
-        } catch (e) {
-          if (e.message.includes('SHA-256')) throw e;
-          task.hashOk = null;
-        }
+        } catch (e) { if (e.message.includes('SHA-256')) throw e; task.hashOk = null; }
       }
-
-      task.progress = 100;
-      task.status = 'completed';
-      this.render();
-
+      task.progress = 100; task.status = 'completed'; this.render();
       if (task.hashOk === true) showToast(`✓ 已下载并校验通过: ${task.name}`);
       else if (task.hashOk === false) showToast(`⚠ 校验失败: ${task.name}`, true);
       else showToast(`✓ 已下载: ${task.name}`);
-
-      // 触发浏览器下载
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = meta.name || task.name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      a.href = url; a.download = meta.name || task.name;
+      document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
-
-      // 清理临时 zip
-      if (task.isZip && task.zipToken) {
-        API.zipCleanup(task.zipToken).catch(() => {});
-      }
+      if (task.isZip && task.zipToken) API.zipCleanup(task.zipToken).catch(() => {});
     } catch (e) {
-      if (task.cancelled) {
-        task.status = 'cancelled';
-        if (task.isZip && task.zipToken) API.zipCleanup(task.zipToken).catch(() => {});
-      } else {
-        task.status = 'error';
-        task.errorMsg = e.message || '下载失败';
-      }
+      if (task.cancelled) { task.status = 'cancelled'; if (task.isZip && task.zipToken) API.zipCleanup(task.zipToken).catch(() => {}); }
+      else { task.status = 'error'; task.errorMsg = e.message || '下载失败'; }
       this.render();
     }
   }
-
-  pause(id) {
-    const t = this.tasks.find(x => x.id === id);
-    if (t && (t.status === 'downloading' || t.status === 'merging' || t.status === 'hashing')) {
-      t.paused = true;
-      t.statusBeforePause = t.status;
-      t.status = 'paused';
-      this.render();
-    }
-  }
-  resume(id) {
-    const t = this.tasks.find(x => x.id === id);
-    if (t && t.status === 'paused') {
-      t.paused = false;
-      t.status = t.statusBeforePause || 'downloading';
-      this.render();
-    }
-  }
-  cancel(id) {
-    const t = this.tasks.find(x => x.id === id);
-    if (!t) return;
-    if (['completed', 'error', 'cancelled'].includes(t.status)) {
-      this.removeTask(id);
-      return;
-    }
-    t.cancelled = true;
-    t.paused = false;
-    this.render();
-  }
-  removeTask(id) {
-    this.tasks = this.tasks.filter(t => t.id !== id);
-    this.render();
-    if (this.tasks.length === 0) this.panel.classList.remove('show');
-  }
-  clearCompleted() {
-    const before = this.tasks.length;
-    this.tasks = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status));
-    const removed = before - this.tasks.length;
-    this.render();
-    if (this.tasks.length === 0) this.panel.classList.remove('show');
-    if (removed > 0) showToast(`已清理 ${removed} 条下载记录`);
-  }
-  togglePanel() { this.panel.classList.toggle('show'); this.adjustPanelShift(); }
-  adjustPanelShift() {
-    const both = document.getElementById('download-panel').classList.contains('show')
-              && document.getElementById('upload-panel').classList.contains('show');
-    document.getElementById('download-panel').classList.toggle('shift', both);
-    document.getElementById('upload-panel').classList.toggle('shift', both);
-  }
-  updateBadge(badgeEl) {
-    if (!badgeEl) return;
-    const active = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)).length;
-    if (active > 0) { badgeEl.textContent = active; badgeEl.classList.add('show'); }
-    else { badgeEl.classList.remove('show'); }
-  }
+  pause(id) { const t = this.tasks.find(x => x.id === id); if (t && ['downloading', 'merging', 'hashing'].includes(t.status)) { t.paused = true; t.statusBeforePause = t.status; t.status = 'paused'; this.render(); } }
+  resume(id) { const t = this.tasks.find(x => x.id === id); if (t && t.status === 'paused') { t.paused = false; t.status = t.statusBeforePause || 'downloading'; this.render(); } }
+  cancel(id) { const t = this.tasks.find(x => x.id === id); if (!t) return; if (['completed', 'error', 'cancelled'].includes(t.status)) { this.removeTask(id); return; } t.cancelled = true; t.paused = false; this.render(); }
+  removeTask(id) { this.tasks = this.tasks.filter(t => t.id !== id); this.render(); if (this.tasks.length === 0) { this.panel.classList.remove('show'); updatePanelPositions(); } }
+  clearCompleted() { const before = this.tasks.length; this.tasks = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)); const removed = before - this.tasks.length; this.render(); if (this.tasks.length === 0) { this.panel.classList.remove('show'); updatePanelPositions(); } if (removed > 0) showToast(`已清理 ${removed} 条下载记录`); }
+  togglePanel() { this.panel.classList.toggle('show'); updatePanelPositions(); }
+  updateBadge(badgeEl) { if (!badgeEl) return; const active = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)).length; if (active > 0) { badgeEl.textContent = active; badgeEl.classList.add('show'); } else { badgeEl.classList.remove('show'); } }
   render() {
     if (this.badge) this.updateBadge(this.badge);
-    if (this.tasks.length === 0) {
-      this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`;
-      return;
-    }
+    requestAnimationFrame(updatePanelPositions);
+    if (this.tasks.length === 0) { this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`; return; }
     this.list.innerHTML = this.tasks.map(t => {
       let statusText = '', statusClass = '';
       const isActive = ['downloading', 'merging', 'hashing'].includes(t.status);
@@ -451,31 +364,19 @@ class DownloadManager {
       const canResume = t.status === 'paused';
       const canCancel = canPause || canResume;
       const canRemove = !canPause && !canResume;
-
       let actions = '';
       if (canPause) actions += `<button class="task-btn" data-act="pause" data-id="${t.id}" title="暂停">❚❚</button>`;
       if (canResume) actions += `<button class="task-btn" data-act="resume" data-id="${t.id}" title="继续">▶</button>`;
       if (canCancel) actions += `<button class="task-btn danger" data-act="cancel" data-id="${t.id}" title="取消">✖</button>`;
       if (canRemove) actions += `<button class="task-btn" data-act="remove" data-id="${t.id}" title="移除">✖</button>`;
-
       const meta = t.totalSize ? `${formatBytes(t.totalSize)}` : (t.meta ? formatBytes(t.meta.size) : '');
-      const metaLine = meta ? `<div class="task-meta">${meta}${t.isZip ? ' · ZIP' : ''}</div>` : '';
-
-      return `<div class="task-item">
-        <div class="task-item-header">
-          <span class="task-item-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
-          <span class="task-item-status ${statusClass}">${statusText}</span>
-          <span class="task-item-actions">${actions}</span>
-        </div>
-        <div class="task-progress"><div class="task-progress-bar ${t.status === 'hashing' ? 'hash' : ''}" style="width: ${t.progress}%; ${barColor}"></div></div>
-        ${metaLine}
-      </div>`;
+      const metaLine = meta ? `<div class="task-meta">${meta}${t.isZip ? ' · ZIP' : ''}${t.totalChunks ? ' · ' + t.downloaded + '/' + t.totalChunks : ''}</div>` : '';
+      return `<div class="task-item"><div class="task-item-header"><span class="task-item-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span><span class="task-item-status ${statusClass}">${statusText}</span><span class="task-item-actions">${actions}</span></div><div class="task-progress"><div class="task-progress-bar ${t.status === 'hashing' ? 'hash' : ''}" style="width: ${t.progress}%; ${barColor}"></div></div>${metaLine}</div>`;
     }).join('');
   }
 }
 const downloadManager = new DownloadManager();
 
-// ===================== 上传管理器 =====================
 class UploadManager {
   constructor() {
     this.tasks = [];
@@ -485,166 +386,80 @@ class UploadManager {
     this.clearBtn = document.getElementById('upload-clear');
     this.closeBtn = document.getElementById('upload-panel-close');
     if (this.clearBtn) this.clearBtn.addEventListener('click', (e) => { e.stopPropagation(); this.clearCompleted(); });
-    if (this.closeBtn) this.closeBtn.addEventListener('click', () => { this.panel.classList.remove('show'); this._adjustShift(); });
+    if (this.closeBtn) this.closeBtn.addEventListener('click', () => { this.panel.classList.remove('show'); updatePanelPositions(); });
     this.list.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-act]');
       if (!btn) return;
       e.stopPropagation();
-      const id = btn.dataset.id;
-      const act = btn.dataset.act;
+      const id = btn.dataset.id, act = btn.dataset.act;
       if (act === 'pause') this.pause(id);
       else if (act === 'resume') this.resume(id);
       else if (act === 'cancel') this.cancel(id);
       else if (act === 'remove') this.removeTask(id);
     });
   }
-
   add(file, parentPath) {
-    const task = {
-      id: Date.now() + Math.random().toString(36).slice(2),
-      file, name: file.name, size: file.size, parentPath,
-      status: 'hashing', paused: false, cancelled: false,
-      hashProgress: 0, progress: 0,
-      uploadId: null, uploadedChunks: new Set(),
-      sha: ''
-    };
-    this.tasks.unshift(task);
-    this.render();
-    this.panel.classList.add('show');
-    downloadManager.adjustPanelShift();
-    this._run(task);
+    const task = { id: Date.now() + Math.random().toString(36).slice(2), file, name: file.name, size: file.size, parentPath, status: 'hashing', paused: false, cancelled: false, hashProgress: 0, progress: 0, uploadId: null, uploadedChunks: new Set(), sha: '', totalChunks: 0, uploadedCount: 0 };
+    this.tasks.unshift(task); this.render(); this.panel.classList.add('show'); updatePanelPositions(); this._run(task);
   }
-
   async _run(task) {
     try {
-      // 1. 计算 SHA-256
-      task.sha = await computeFileSha256(task.file, (p) => {
-        task.hashProgress = p;
-        this.render();
-      });
+      task.sha = await computeFileSha256(task.file, (p) => { task.hashProgress = p; this.render(); });
       if (task.cancelled) throw new Error('__CANCELLED__');
-
-      // 2. init
-      task.status = 'uploading';
-      this.render();
-      const init = await API.uploadInit({
-        name: task.name, size: task.size, sha256: task.sha, parentPath: task.parentPath
-      });
+      task.status = 'uploading'; this.render();
+      const init = await API.uploadInit({ name: task.name, size: task.size, sha256: task.sha, parentPath: task.parentPath });
       task.uploadId = init.uploadId;
       task.uploadedChunks = new Set(init.uploadedChunks);
-      if (task.uploadedChunks.size > 0) {
-        showToast(`断点续传: ${task.name} 已跳过 ${task.uploadedChunks.size} 个分片`);
-      }
-
-      // 3. 分片上传
+      if (task.uploadedChunks.size > 0) showToast(`断点续传: ${task.name} 已跳过 ${task.uploadedChunks.size} 个分片`);
       const chunkSize = 4 * 1024 * 1024;
       const total = Math.ceil(task.size / chunkSize) || 1;
-      for (let i = 0; i < total; i++) {
-        if (task.cancelled) throw new Error('__CANCELLED__');
-        while (task.paused && !task.cancelled) await sleep(200);
-        if (task.cancelled) throw new Error('__CANCELLED__');
-
-        if (task.uploadedChunks.has(i)) {
-          task.progress = Math.round(((i + 1) / total) * 100);
+      task.totalChunks = total;
+      task.uploadedCount = init.uploadedChunks.length;
+      const concurrency = Math.max(1, TRANSFER_CONFIG.uploadConcurrency);
+      let nextIndex = 0;
+      const worker = async () => {
+        while (true) {
+          if (task.cancelled) throw new Error('__CANCELLED__');
+          while (task.paused && !task.cancelled) await sleep(150);
+          if (task.cancelled) throw new Error('__CANCELLED__');
+          const idx = nextIndex++;
+          if (idx >= total) return;
+          if (task.uploadedChunks.has(idx)) { task.uploadedCount++; task.progress = Math.round((task.uploadedCount / total) * 100); this.render(); continue; }
+          const start = idx * chunkSize;
+          const end = Math.min(start + chunkSize, task.size);
+          const blob = task.file.slice(start, end);
+          await API.uploadChunk(task.uploadId, idx, blob);
+          task.uploadedChunks.add(idx);
+          task.uploadedCount++;
+          task.progress = Math.round((task.uploadedCount / total) * 100);
           this.render();
-          continue;
         }
-
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, task.size);
-        const blob = task.file.slice(start, end);
-        await API.uploadChunk(task.uploadId, i, blob);
-        task.uploadedChunks.add(i);
-        task.progress = Math.round(((i + 1) / total) * 100);
-        this.render();
-      }
-
-      // 4. complete
-      task.status = 'finalizing';
-      this.render();
+      };
+      const workers = [];
+      for (let i = 0; i < concurrency; i++) workers.push(worker());
+      await Promise.all(workers);
+      task.status = 'finalizing'; this.render();
       await API.uploadComplete(task.uploadId);
-      task.status = 'completed';
-      task.progress = 100;
-      this.render();
+      task.status = 'completed'; task.progress = 100; this.render();
       showToast(`✓ 上传完成: ${task.name}`);
-
-      // 通知主视图刷新
       window.dispatchEvent(new CustomEvent('upload-complete', { detail: { parentPath: task.parentPath } }));
     } catch (e) {
-      if (task.cancelled) {
-        task.status = 'cancelled';
-        if (task.uploadId) API.uploadCancel(task.uploadId).catch(() => {});
-      } else {
-        task.status = 'error';
-        task.errorMsg = e.message;
-        showToast(`上传失败: ${e.message}`, true);
-      }
+      if (task.cancelled) { task.status = 'cancelled'; if (task.uploadId) API.uploadCancel(task.uploadId).catch(() => {}); }
+      else { task.status = 'error'; task.errorMsg = e.message; showToast(`上传失败: ${e.message}`, true); }
       this.render();
     }
   }
-
-  pause(id) {
-    const t = this.tasks.find(x => x.id === id);
-    if (t && ['hashing', 'uploading', 'finalizing'].includes(t.status)) {
-      t.paused = true;
-      t.statusBeforePause = t.status;
-      t.status = 'paused';
-      this.render();
-    }
-  }
-  resume(id) {
-    const t = this.tasks.find(x => x.id === id);
-    if (t && t.status === 'paused') {
-      t.paused = false;
-      t.status = t.statusBeforePause || 'uploading';
-      this.render();
-    }
-  }
-  cancel(id) {
-    const t = this.tasks.find(x => x.id === id);
-    if (!t) return;
-    if (['completed', 'error', 'cancelled'].includes(t.status)) {
-      this.removeTask(id);
-      return;
-    }
-    t.cancelled = true;
-    t.paused = false;
-    this.render();
-  }
-  removeTask(id) {
-    this.tasks = this.tasks.filter(t => t.id !== id);
-    this.render();
-    if (this.tasks.length === 0) this.panel.classList.remove('show');
-    this._adjustShift();
-  }
-  clearCompleted() {
-    const before = this.tasks.length;
-    this.tasks = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status));
-    const removed = before - this.tasks.length;
-    this.render();
-    if (this.tasks.length === 0) this.panel.classList.remove('show');
-    if (removed > 0) showToast(`已清理 ${removed} 条上传记录`);
-    this._adjustShift();
-  }
-  togglePanel() { this.panel.classList.toggle('show'); this._adjustShift(); }
-  _adjustShift() {
-    const both = document.getElementById('download-panel').classList.contains('show')
-              && document.getElementById('upload-panel').classList.contains('show');
-    document.getElementById('download-panel').classList.toggle('shift', both);
-    document.getElementById('upload-panel').classList.toggle('shift', both);
-  }
-  updateBadge(badgeEl) {
-    if (!badgeEl) return;
-    const active = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)).length;
-    if (active > 0) { badgeEl.textContent = active; badgeEl.classList.add('show'); }
-    else { badgeEl.classList.remove('show'); }
-  }
+  pause(id) { const t = this.tasks.find(x => x.id === id); if (t && ['hashing', 'uploading', 'finalizing'].includes(t.status)) { t.paused = true; t.statusBeforePause = t.status; t.status = 'paused'; this.render(); } }
+  resume(id) { const t = this.tasks.find(x => x.id === id); if (t && t.status === 'paused') { t.paused = false; t.status = t.statusBeforePause || 'uploading'; this.render(); } }
+  cancel(id) { const t = this.tasks.find(x => x.id === id); if (!t) return; if (['completed', 'error', 'cancelled'].includes(t.status)) { this.removeTask(id); return; } t.cancelled = true; t.paused = false; this.render(); }
+  removeTask(id) { this.tasks = this.tasks.filter(t => t.id !== id); this.render(); if (this.tasks.length === 0) { this.panel.classList.remove('show'); updatePanelPositions(); } }
+  clearCompleted() { const before = this.tasks.length; this.tasks = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)); const removed = before - this.tasks.length; this.render(); if (this.tasks.length === 0) { this.panel.classList.remove('show'); updatePanelPositions(); } if (removed > 0) showToast(`已清理 ${removed} 条上传记录`); }
+  togglePanel() { this.panel.classList.toggle('show'); updatePanelPositions(); }
+  updateBadge(badgeEl) { if (!badgeEl) return; const active = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)).length; if (active > 0) { badgeEl.textContent = active; badgeEl.classList.add('show'); } else { badgeEl.classList.remove('show'); } }
   render() {
     if (this.badge) this.updateBadge(this.badge);
-    if (this.tasks.length === 0) {
-      this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无上传任务</div>`;
-      return;
-    }
+    requestAnimationFrame(updatePanelPositions);
+    if (this.tasks.length === 0) { this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无上传任务</div>`; return; }
     this.list.innerHTML = this.tasks.map(t => {
       let statusText = '', statusClass = '';
       const isActive = ['uploading', 'finalizing'].includes(t.status);
@@ -657,83 +472,154 @@ class UploadManager {
         case 'completed': statusText = '已完成'; statusClass = 'ok'; break;
         case 'error': statusText = '失败'; statusClass = 'err'; break;
       }
-      const barColor = t.status === 'error' ? 'background:#E5484D;'
-                     : t.status === 'completed' ? 'background:#2f9e44;'
-                     : t.status === 'hashing' ? 'background:#f08c00;'
-                     : t.status === 'paused' ? 'background:#f08c00;' : '';
+      const barColor = t.status === 'error' ? 'background:#E5484D;' : t.status === 'completed' ? 'background:#2f9e44;' : t.status === 'hashing' ? 'background:#f08c00;' : t.status === 'paused' ? 'background:#f08c00;' : '';
       const canPause = isActive || t.status === 'hashing';
       const canResume = t.status === 'paused';
       const canCancel = canPause || canResume;
       const canRemove = !canPause && !canResume;
-
       let actions = '';
       if (canPause) actions += `<button class="task-btn" data-act="pause" data-id="${t.id}" title="暂停">❚❚</button>`;
       if (canResume) actions += `<button class="task-btn" data-act="resume" data-id="${t.id}" title="继续">▶</button>`;
       if (canCancel) actions += `<button class="task-btn danger" data-act="cancel" data-id="${t.id}" title="取消">✖</button>`;
       if (canRemove) actions += `<button class="task-btn" data-act="remove" data-id="${t.id}" title="移除">✖</button>`;
-
-      const metaLine = `<div class="task-meta">${formatBytes(t.size)} → ${t.parentPath}</div>`;
-
-      return `<div class="task-item">
-        <div class="task-item-header">
-          <span class="task-item-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
-          <span class="task-item-status ${statusClass}">${statusText}</span>
-          <span class="task-item-actions">${actions}</span>
-        </div>
-        <div class="task-progress"><div class="task-progress-bar ${t.status === 'hashing' ? 'hash' : ''}" style="width: ${t.status === 'hashing' ? t.hashProgress : t.progress}%; ${barColor}"></div></div>
-        ${metaLine}
-      </div>`;
+      const metaLine = `<div class="task-meta">${formatBytes(t.size)} → ${t.parentPath}${t.totalChunks ? ' · ' + t.uploadedCount + '/' + t.totalChunks : ''}</div>`;
+      return `<div class="task-item"><div class="task-item-header"><span class="task-item-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span><span class="task-item-status ${statusClass}">${statusText}</span><span class="task-item-actions">${actions}</span></div><div class="task-progress"><div class="task-progress-bar ${t.status === 'hashing' ? 'hash' : ''}" style="width: ${t.status === 'hashing' ? t.hashProgress : t.progress}%; ${barColor}"></div></div>${metaLine}</div>`;
     }).join('');
   }
 }
 const uploadManager = new UploadManager();
 
-// ===================== 自定义元素 =====================
+// ============ v13: 侧边栏折叠 grid 动画 + display:none 完全消除宽度 ============
 class CollapsibleItem extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
   connectedCallback() { this.render(); }
   static get observedAttributes() { return ['label', 'open', 'path', 'loaded', 'leaf']; }
   attributeChangedCallback(name, oldVal, newVal) { if (oldVal !== newVal) this.render(); }
+
+  _handleToggle(open) {
+    const fold = this.shadowRoot.querySelector('.fold');
+    if (!fold) return;
+    if (open) {
+      fold.style.display = '';
+      fold.dataset.state = 'opening';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (fold.dataset.state === 'opening') {
+            fold.dataset.state = 'open';
+          }
+        });
+      });
+    } else {
+      fold.dataset.state = 'closing';
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (fold.dataset.state === 'closing') {
+          fold.style.display = 'none';
+          fold.dataset.state = 'closed';
+        }
+      };
+      fold.addEventListener('transitionend', function onEnd(e) {
+        if (e.propertyName === 'grid-template-rows') {
+          finish();
+          fold.removeEventListener('transitionend', onEnd);
+        }
+      });
+      setTimeout(finish, 320);
+    }
+  }
+
   render() {
-    const label = this.getAttribute("label") || "Item", isOpen = this.hasAttribute("open") ? "checked" : "", id = "tog_" + Math.random().toString(36).substr(2, 9);
+    const label = this.getAttribute("label") || "Item";
+    const isOpen = this.hasAttribute("open");
+    const id = "tog_" + Math.random().toString(36).substr(2, 9);
     const folderIcon = getSvg('folder', '#0090ff');
     this.shadowRoot.innerHTML = `
-      <style>:host { display: block; --hover-bg: var(--slate-4); outline: none; } .toggle { display: none; } 
-      .item-header { display: flex; align-items: center; padding: 2px 4px; margin: 1px 0; cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: 500; transition: background 0.1s; } 
-      .item-header:hover { background: var(--hover-bg); } .item-header:focus-visible { outline: 2px solid var(--blue-9); } 
-      .icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; flex-shrink: 0; }
-      .arrow { border: solid var(--slate-8); border-width: 0 2px 2px 0; display: inline-block; padding: 3px; transform: rotate(-45deg); transition: transform 0.2s; margin-right: 4px; }
-      .toggle:checked ~ .item-header .arrow { transform: rotate(45deg); }
-      :host([leaf]) .arrow { visibility: hidden; }
-      .file-icon { width: 14px; height: 14px; margin-right: 6px; display: inline-block; }
-      .text { padding: 4px 10px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 0.1s; display: flex; align-items: center; } 
-      .text:hover { background: rgba(0,0,0,0.08); } 
-      .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.2s; overflow: hidden; } .toggle:checked ~ .fold { grid-template-rows: 1fr; } .content { min-height: 0; padding-left: 16px; display: flex; flex-direction: column; } :host([selected]) > .item-header { background: var(--blue-4) !important; color: var(--blue-11); }</style>
-      <input type="checkbox" id="${id}" class="toggle" ${isOpen}>
+      <style>
+        :host { display: block; width: 100%; box-sizing: border-box; }
+        .toggle { display: none; }
+        .item-header {
+          display: flex; align-items: center; padding: 2px 4px; margin: 1px 0;
+          cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: 500;
+          transition: background 0.1s; white-space: nowrap;
+          min-width: 100%; width: max-content; box-sizing: border-box;
+        }
+        .item-header:hover { background: var(--slate-4); }
+        .item-header:focus-visible { outline: 2px solid var(--blue-9); }
+        .icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .arrow { border: solid var(--slate-8); border-width: 0 2px 2px 0; display: inline-block; padding: 3px; transform: rotate(-45deg); transition: transform 0.2s; margin-right: 4px; }
+        .toggle:checked ~ .item-header .arrow { transform: rotate(45deg); }
+        :host([leaf]) .arrow { visibility: hidden; }
+        .file-icon { width: 14px; height: 14px; margin-right: 6px; display: inline-block; flex-shrink: 0; }
+        .text { padding: 4px 10px; border-radius: 4px; white-space: nowrap; display: flex; align-items: center; }
+        .text:hover { background: rgba(0,0,0,0.08); }
+        .fold { display: none; }
+        .fold[data-state="open"],
+        .fold[data-state="opening"],
+        .fold[data-state="closing"] {
+          display: grid;
+          width: max-content;
+          min-width: 100%;
+          box-sizing: border-box;
+          grid-template-rows: 0fr;
+          transition: grid-template-rows 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .fold[data-state="open"] { grid-template-rows: 1fr; }
+        .fold > .content {
+          min-height: 0;
+          overflow: hidden;
+          padding-left: 10px;
+          display: flex;
+          flex-direction: column;
+        }
+        :host([selected]) > .item-header { background: var(--blue-4) !important; color: var(--blue-11); }
+      </style>
+      <input type="checkbox" id="${id}" class="toggle" ${isOpen ? 'checked' : ''}>
       <label for="${id}" class="item-header" tabindex="0">
         <span class="icon"><i class="arrow"></i></span>
         <span class="text" title="${label}"><div class="file-icon">${folderIcon}</div>${label}</span>
       </label>
-      <div class="fold"><div class="content"><slot></slot></div></div>`;
-    const headerEl = this.shadowRoot.querySelector('.item-header'), checkbox = this.shadowRoot.getElementById(id);
-    headerEl.addEventListener('click', (e) => {
-      if (e.target.closest('.text')) { e.preventDefault(); e.stopPropagation(); this.dispatchEvent(new CustomEvent('tree-navigate', { detail: this.getAttribute('path') || '', bubbles: true, composed: true })); return; }
-      if (this.hasAttribute('leaf')) { e.preventDefault(); return; }
-      if (checkbox && !checkbox.checked && !this.hasAttribute('loaded')) {
-        e.preventDefault();
+      <div class="fold" data-state="${isOpen ? 'open' : 'closed'}" style="${isOpen ? '' : 'display: none;'}">
+        <div class="content"><slot></slot></div>
+      </div>
+    `;
+    const checkbox = this.shadowRoot.getElementById(id);
+    const headerEl = this.shadowRoot.querySelector('.item-header');
+
+    checkbox.addEventListener('change', () => {
+      this._handleToggle(checkbox.checked);
+      if (checkbox.checked && !this.hasAttribute('loaded')) {
         this.dispatchEvent(new CustomEvent('tree-load', { detail: { path: this.getAttribute('path') || '', el: this }, bubbles: true, composed: true }));
+      }
+    });
+
+    headerEl.addEventListener('click', (e) => {
+      if (e.target.closest('.text')) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.dispatchEvent(new CustomEvent('tree-navigate', { detail: this.getAttribute('path') || '', bubbles: true, composed: true }));
+        return;
+      }
+      if (this.hasAttribute('leaf')) {
+        e.preventDefault();
+        return;
       }
     });
   }
 }
-customElements.define("collapsible-tree", class extends HTMLElement { constructor(){super();this.attachShadow({mode:"open"});this.shadowRoot.innerHTML=`<style>:host{display:block}</style><slot></slot>`;} });
+customElements.define("collapsible-tree", class extends HTMLElement { constructor(){super();this.attachShadow({mode:"open"});this.shadowRoot.innerHTML=`<style>:host{display:block; width:100%; box-sizing:border-box;}</style><slot></slot>`;} });
 customElements.define("collapsible-item", CollapsibleItem);
 
 class FMRibbon extends HTMLElement {
-  constructor() { super(); this.attachShadow({ mode: "open" }); this.collapsed = false; }
+  constructor() { super(); this.attachShadow({ mode: "open" }); this.collapsed = false; this.showHidden = false; }
   connectedCallback() {
     this.shadowRoot.innerHTML = `
-      <style>:host { display: block; background: var(--slate-2); border-bottom: 1px solid var(--slate-5); } .header { display: flex; align-items: center; border-bottom: 1px solid var(--slate-4); padding: 0 8px; background: white; } .tabs { display: flex; flex: 1; } .tab { padding: 6px 16px; font-size: 12px; cursor: pointer; margin-bottom: -1px; border: 1px solid transparent; } .tab.active { background: var(--slate-2); border-bottom-color: var(--slate-2); border-top: 2px solid var(--blue-9); } .ribbon-body { display: flex; height: 74px; overflow-x: auto; overflow-y: hidden; transition: height 0.2s; scrollbar-width: none; } .ribbon-body::-webkit-scrollbar { display: none; } .ribbon-body.collapsed { height: 0; border-bottom: none; } .group { display: flex; flex-direction: column; border-right: 1px solid var(--slate-5); padding: 4px 8px; justify-content: space-between; flex-shrink: 0; } .group-title { font-size: 11px; color: var(--slate-8); text-align: center; margin-top: 4px; pointer-events: none; } .actions { display: flex; gap: 4px; } button { display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; padding: 2px 8px; color: var(--slate-12); font-size: 11px; white-space: nowrap; } button:hover { background: var(--slate-4); } button:active { background: var(--slate-5); transform: scale(0.98); } button .ico { width: 24px; height: 24px; margin-bottom: 2px; } button.small { flex-direction: row; padding: 2px 6px; justify-content: flex-start; } button.small .ico { width: 16px; height: 16px; margin-right: 4px; margin-bottom: 0; } .toggle-btn { cursor: pointer; padding: 4px 8px; font-size: 10px; color: var(--slate-8); margin-left: auto; }</style>
+      <style>:host { display: block; background: var(--slate-2); border-bottom: 1px solid var(--slate-5); } .header { display: flex; align-items: center; border-bottom: 1px solid var(--slate-4); padding: 0 8px; background: white; } .tabs { display: flex; flex: 1; } .tab { padding: 6px 16px; font-size: 12px; cursor: pointer; margin-bottom: -1px; border: 1px solid transparent; } .tab.active { background: var(--slate-2); border-bottom-color: var(--slate-2); border-top: 2px solid var(--blue-9); } .ribbon-body { display: flex; height: 74px; overflow-x: auto; overflow-y: hidden; transition: height 0.2s; scrollbar-width: none; } .ribbon-body::-webkit-scrollbar { display: none; } .ribbon-body.collapsed { height: 0; border-bottom: none; } .group { display: flex; flex-direction: column; border-right: 1px solid var(--slate-5); padding: 4px 8px; justify-content: space-between; flex-shrink: 0; } .group-title { font-size: 11px; color: var(--slate-8); text-align: center; margin-top: 4px; pointer-events: none; } .actions { display: flex; gap: 4px; } button { display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; padding: 2px 8px; color: var(--slate-12); font-size: 11px; white-space: nowrap; } button:hover { background: var(--slate-4); } button:active { background: var(--slate-5); transform: scale(0.98); } button .ico { width: 24px; height: 24px; margin-bottom: 2px; } button.small { flex-direction: row; padding: 2px 6px; justify-content: flex-start; } button.small .ico { width: 16px; height: 16px; margin-right: 4px; margin-bottom: 0; } .toggle-btn { cursor: pointer; padding: 4px 8px; font-size: 10px; color: var(--slate-8); margin-left: auto; }
+      .checkbox-btn { display: flex; flex-direction: row; align-items: center; gap: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer; border-radius: 4px; border: 1px solid transparent; }
+      .checkbox-btn:hover { background: var(--slate-4); }
+      .checkbox-btn input { cursor: pointer; }
+      </style>
       <div class="header"><div class="tabs"><div class="tab active">主页</div></div><div class="toggle-btn" id="toggle">🔽</div></div>
       <div class="ribbon-body" id="body">
         <div class="group"><div class="actions">
@@ -760,11 +646,24 @@ class FMRibbon extends HTMLElement {
           <button data-action="viewToggle" id="view-toggle-btn"><div class="ico">${getSvg('list', '#111')}</div>切换视图</button>
           <button data-action="refresh"><div class="ico">${getSvg('refresh', '#8f8f8f')}</div>刷新</button>
         </div><div class="group-title">查看</div></div>
+        <div class="group"><div class="actions">
+          <label class="checkbox-btn" title="显示隐藏的文件/目录">
+            <input type="checkbox" id="show-hidden-cb">
+            <span style="font-size:11px; user-select:none;">显示隐藏文件</span>
+          </label>
+        </div><div class="group-title">显示</div></div>
       </div>`;
     this.shadowRoot.getElementById('toggle').addEventListener('click', () => { this.collapsed = !this.collapsed; this.shadowRoot.getElementById('body').classList.toggle('collapsed', this.collapsed); this.shadowRoot.getElementById('toggle').innerText = this.collapsed ? '◀' : '🔽'; });
     this.shadowRoot.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => this.dispatchEvent(new CustomEvent('action', { detail: btn.dataset.action, bubbles: true, composed: true }))));
+    const hiddenCb = this.shadowRoot.getElementById('show-hidden-cb');
+    hiddenCb.addEventListener('change', (e) => {
+      e.stopPropagation();
+      this.showHidden = e.target.checked;
+      this.dispatchEvent(new CustomEvent('toggle-hidden', { detail: e.target.checked, bubbles: true, composed: true }));
+    });
   }
   updateViewIcon(isList) { const ico = this.shadowRoot.querySelector('#view-toggle-btn .ico'); if(ico) ico.innerHTML = isList ? getSvg('grid', '#111') : getSvg('list', '#111'); }
+  setShowHidden(v) { this.showHidden = !!v; const cb = this.shadowRoot.getElementById('show-hidden-cb'); if (cb) cb.checked = !!v; }
 }
 customElements.define("fm-ribbon", FMRibbon);
 
@@ -805,7 +704,13 @@ class FMAddressBar extends HTMLElement {
 customElements.define("fm-addressbar", FMAddressBar);
 
 class FMMainView extends HTMLElement {
-  constructor() { super(); this.attachShadow({ mode: "open" }); this.items = []; this.renderedItems = []; this.viewMode = localStorage.getItem('fm-view-mode') || 'list'; this.selectedIds = new Set(); this.sortConfig = { by: 'name', asc: true }; this.isLoading = false; }
+  constructor() { super(); this.attachShadow({ mode: "open" }); this.items = []; this.renderedItems = []; this.viewMode = localStorage.getItem('fm-view-mode') || 'list'; this.selectedIds = new Set(); this.sortConfig = { by: 'name', asc: true }; this.isLoading = false;
+    this.showHidden = localStorage.getItem('fm-show-hidden') === 'true';
+    // v13: 双击检测状态
+    this._lastDownPath = null;
+    this._lastDownTime = 0;
+    this._suppressDblclick = false;
+  }
   connectedCallback() {
     this.shadowRoot.innerHTML = `<style>:host { display: flex; flex-direction: column; height: 100%; background: white; position: relative; user-select: none; } 
       .header-bar { display: none; align-items: center; border-bottom: 1px solid var(--slate-4); padding: 0 16px; background: var(--slate-1); font-size: 12px; font-weight: 600; color: var(--slate-9); position: sticky; top: 0; z-index: 20; }
@@ -818,6 +723,10 @@ class FMMainView extends HTMLElement {
       .scroll-container { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; outline: none; } 
       .phantom { position: absolute; left: 0; top: 0; width: 1px; z-index: -1; } .viewport { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; } 
       .item { position: absolute; box-sizing: border-box; pointer-events: auto; transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s, background 0.15s; display: flex; align-items: center; }
+      .item[data-hidden="1"] { opacity: 0.55; }
+      .item[data-hidden="1"]:hover { opacity: 0.8; }
+      .item[data-hidden="1"].selected { opacity: 0.85; }
+      .viewport.loading .item { pointer-events: none !important; }
       .list-item { padding: 0 16px; border-bottom: 1px solid var(--slate-3); font-size: 13px; color: var(--slate-12); display: flex; align-items: center; } .list-item .col-name { display: flex; align-items: center; overflow: hidden; } .list-item .col-name .icon { margin-right: 12px; width: 20px; height: 20px; display: inline-block; flex-shrink: 0; } .list-item .col-name .text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; } .list-item .col-date { color: var(--slate-9); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 8px; box-sizing: border-box; } .list-item .col-size { color: var(--slate-9); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 8px; box-sizing: border-box; }
       .list-item:hover, .list-item.drag-over { background: var(--blue-2); } .list-item.selected { background: var(--blue-3); }
       .grid-item { padding: 4px; } .grid-content { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border: 1px solid transparent; border-radius: 4px; } .grid-item:hover .grid-content, .grid-item.drag-over .grid-content { background: var(--blue-2); } .grid-item.selected .grid-content { background: var(--blue-3); border-color: var(--blue-5); } .grid-content .icon { width: 44px; height: 44px; margin-bottom: 16px; display: inline-block; } .grid-content .text { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; padding: 0 4px; box-sizing: border-box; color: var(--slate-12); }
@@ -839,10 +748,35 @@ class FMMainView extends HTMLElement {
     this.setAttribute('view-mode', this.viewMode);
     this.initInteractionEngine();
     this.initHeaderResizer();
+    // v13: 原生 dblclick 作为兜底（如果 pointerdown 时间戳检测没触发）
     this.scroller.addEventListener('dblclick', (e) => {
+      if (this._suppressDblclick) {
+        // pointerdown 已处理，屏蔽本次
+        this._suppressDblclick = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (this.isLoading) return;
       const el = e.target.closest('.item');
-      if (el) { const item = this.renderedItems[el.dataset.idx]; if (item.type === 'folder' && !item.inTrash) this.dispatchEvent(new CustomEvent('navigate', { detail: item.path, bubbles: true, composed: true })); else if (!item.inTrash) this.dispatchEvent(new CustomEvent('action', { detail: 'view-file', bubbles: true, composed: true })); }
+      if (!el) return;
+      const path = el.dataset.path;
+      if (!path) return;
+      const item = this.items.find(i => i.path === path);
+      if (!item || item.inTrash) return;
+      this.selectedIds.clear();
+      this.selectedIds.add(item.path);
+      this.syncSelectionVisuals();
+      if (item.type === 'folder') {
+        this.dispatchEvent(new CustomEvent('navigate', { detail: item.path, bubbles: true, composed: true }));
+      } else {
+        this.dispatchEvent(new CustomEvent('action', { detail: 'view-file', bubbles: true, composed: true }));
+      }
     });
+  }
+  setLoading(loading) {
+    this.isLoading = loading;
+    this.viewport.classList.toggle('loading', loading);
   }
   initHeaderResizer() {
     const headers = this.shadowRoot.querySelectorAll('.header-cell');
@@ -860,7 +794,17 @@ class FMMainView extends HTMLElement {
   }
   showSkeleton(show) { this.isLoading = show; this.shadowRoot.getElementById('skeleton').classList.toggle('active', show); }
   triggerFadeAnim() { this.viewport.classList.remove('animate-change'); void this.viewport.offsetWidth; this.viewport.classList.add('animate-change'); }
-  setItems(items) { this.items = items; this.selectedIds.clear(); this.scroller.scrollTop = 0; this.applySortAndFilter(); this.triggerFadeAnim(); }
+  setItems(items) { 
+    this.items = items; 
+    this.selectedIds.clear(); 
+    this.scroller.scrollTop = 0; 
+    // v13: 新目录加载完成后，重置双击检测状态
+    this._lastDownPath = null;
+    this._lastDownTime = 0;
+    this.applySortAndFilter(); 
+    this.triggerFadeAnim(); 
+  }
+  setShowHidden(v) { this.showHidden = !!v; this.applySortAndFilter(); }
   filterItems(keyword) { this.searchKeyword = keyword; this.scroller.scrollTop = 0; this.applySortAndFilter(); this.triggerFadeAnim(); }
   sortItems(by) { 
     if(this.sortConfig.by === by) this.sortConfig.asc = !this.sortConfig.asc; else { this.sortConfig.by = by; this.sortConfig.asc = true; } 
@@ -868,7 +812,9 @@ class FMMainView extends HTMLElement {
     this.applySortAndFilter(); 
   }
   applySortAndFilter() {
-    let arr = this.searchKeyword ? this.items.filter(i => i.name.toLowerCase().includes(this.searchKeyword.toLowerCase())) : [...this.items];
+    let arr = [...this.items];
+    if (!this.showHidden) arr = arr.filter(i => !i.hidden);
+    if (this.searchKeyword) arr = arr.filter(i => i.name.toLowerCase().includes(this.searchKeyword.toLowerCase()));
     const sign = this.sortConfig.asc ? 1 : -1;
     arr.sort((a,b) => { if(a.type !== b.type) return (a.type === 'folder' ? -1 : 1); if(this.sortConfig.by === 'name') return a.name.localeCompare(b.name) * sign; if(this.sortConfig.by === 'size') return (a.size - b.size) * sign; if(this.sortConfig.by === 'date') return (new Date(a.modified) - new Date(b.modified)) * sign; return 0; });
     this.renderedItems = arr; this.renderVisibleItems();
@@ -895,6 +841,7 @@ class FMMainView extends HTMLElement {
       el.className = `item ${isSelected ? 'selected' : ''} ${isList ? 'list-item' : 'grid-item'}`;
       el.dataset.path = item.path; el.dataset.idx = i; el.dataset.type = item.type;
       if (item.inTrash) el.dataset.inTrash = '1'; else delete el.dataset.inTrash;
+      if (item.hidden) el.dataset.hidden = '1'; else delete el.dataset.hidden;
       el.style.transform = `translate(${left}px, ${top}px)`; el.style.width = `${iW}px`; el.style.height = `${iH}px`;
       const dateText = item.inTrash ? (item.deletedAt || item.modified) : item.modified;
       if (isNew || el.dataset.view !== this.viewMode) {
@@ -953,11 +900,48 @@ class FMMainView extends HTMLElement {
     this.scroller.addEventListener('contextmenu', (e) => {
       e.preventDefault(); 
       if (state.startsWith('TOUCH')) return; 
+      if (this.isLoading) return;
       const itemEl = e.target.closest('.item');
       if (itemEl && !this.selectedIds.has(itemEl.dataset.path)) { this.selectedIds.clear(); this.selectedIds.add(itemEl.dataset.path); this.syncSelectionVisuals(); }
       this.dispatchEvent(new CustomEvent('context', { detail: { x: e.clientX, y: e.clientY, type: itemEl ? itemEl.dataset.type : 'empty', inTrash: itemEl ? !!itemEl.dataset.inTrash : false }, bubbles: true, composed: true }));
     });
     this.scroller.addEventListener('pointerdown', (e) => {
+      if (this.isLoading) return;
+      // ============ v13: 用 pointerdown 时间戳检测双击 ============
+      if (e.button === 0 && e.pointerType === 'mouse') {
+        const itemEl = e.target.closest('.item');
+        if (itemEl) {
+          const path = itemEl.dataset.path;
+          const now = Date.now();
+          const DBLCLICK_MS = 350;
+          if (path === this._lastDownPath && (now - this._lastDownTime) < DBLCLICK_MS) {
+            this._lastDownPath = null;
+            this._lastDownTime = 0;
+            this._suppressDblclick = true;
+            const item = this.items.find(i => i.path === path);
+            if (item && !item.inTrash) {
+              this.selectedIds.clear();
+              this.selectedIds.add(item.path);
+              this.syncSelectionVisuals();
+              cleanup();
+              e.preventDefault();
+              e.stopPropagation();
+              if (item.type === 'folder') {
+                this.dispatchEvent(new CustomEvent('navigate', { detail: item.path, bubbles: true, composed: true }));
+              } else {
+                this.dispatchEvent(new CustomEvent('action', { detail: 'view-file', bubbles: true, composed: true }));
+              }
+              return;
+            }
+          } else {
+            this._lastDownPath = path;
+            this._lastDownTime = now;
+          }
+        } else {
+          this._lastDownPath = null;
+          this._lastDownTime = 0;
+        }
+      }
       window.dispatchEvent(new Event('hide-context'));
       if(e.button !== 0 && e.pointerType === 'mouse') return;
       const rect = this.scroller.getBoundingClientRect();
@@ -985,6 +969,7 @@ class FMMainView extends HTMLElement {
       }
     });
     this.scroller.addEventListener('pointermove', (e) => {
+      if (this.isLoading) return;
       if (state === 'IDLE' || state === 'SCROLLING') return;
       const rect = this.scroller.getBoundingClientRect(), currX = e.clientX - rect.left + this.scroller.scrollLeft, currY = e.clientY - rect.top + this.scroller.scrollTop; 
       lastClientY = e.clientY; const dist = Math.abs(currY - startY) + Math.abs(currX - startX);
@@ -1022,6 +1007,7 @@ class FMMainView extends HTMLElement {
       }
     });
     const endInteraction = (e) => {
+      if (this.isLoading) { cleanup(); return; }
       const s = state, target = dragTargetItem; cleanup(); 
       try { this.scroller.releasePointerCapture(e.pointerId); } catch(err){}
       if (s === 'MOUSE_WAIT' || s === 'TOUCH_WAIT') {
@@ -1102,14 +1088,14 @@ class FMStatusBar extends HTMLElement {
 customElements.define("fm-statusbar", FMStatusBar);
 
 class WinFileExplorer extends HTMLElement {
-  constructor() { super(); this.attachShadow({ mode: "open" }); this.currentPath = ""; this.currentView = 'explorer'; this.history = []; this.historyIndex = -1; this.storageMode = 'disk'; }
+  constructor() { super(); this.attachShadow({ mode: "open" }); this.currentPath = ""; this.currentView = 'explorer'; this.history = []; this.historyIndex = -1; this.storageMode = 'disk'; this.showHidden = false; }
   async connectedCallback() {
     this.shadowRoot.innerHTML = `
       <style>
         :host { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--slate-6); box-sizing: border-box; background: white; }
         .body-layout { display: flex; flex: 1; overflow: hidden; }
         .sidebar { width: 220px; background: white; border-right: 1px solid var(--slate-5); display: flex; flex-direction: column; flex-shrink: 0; }
-        .sidebar-scroll { flex: 1; overflow-y: auto; padding: 8px; }
+        .sidebar-scroll { flex: 1; overflow: auto; padding: 8px; }
         .sidebar-bottom { flex-shrink: 0; border-top: 1px solid var(--slate-5); padding: 6px; background: var(--slate-1); }
         .quick-item { display: flex; align-items: center; padding: 6px 8px; cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 10px; transition: background 0.1s; user-select: none; }
         .quick-item:hover { background: var(--slate-4); }
@@ -1139,7 +1125,7 @@ class WinFileExplorer extends HTMLElement {
               <span class="quick-label">下载</span>
               <span class="quick-badge" id="download-badge"></span>
             </div>
-            <div class="quick-item" id="btn-show-uploads" title="打开上传列表">
+            <div class="quick-item" id="btn-show-uploads" title="打开上传列表 (Ctrl+U)">
               <span class="quick-icon">${getSvg('upload', '#0090ff')}</span>
               <span class="quick-label">上传</span>
               <span class="quick-badge" id="upload-badge"></span>
@@ -1177,10 +1163,14 @@ class WinFileExplorer extends HTMLElement {
     this.dropOverlay = this.shadowRoot.getElementById('drop-overlay');
     this.dropText = this.shadowRoot.getElementById('drop-text');
     this.hiddenFileInput = this.shadowRoot.getElementById('hidden-file-input');
+    this.sidebarScroll = this.shadowRoot.querySelector('.sidebar-scroll');
 
-    // 绑定 badge
     downloadManager.badge = this.downloadBadge;
     uploadManager.badge = this.uploadBadge;
+
+    this.showHidden = localStorage.getItem('fm-show-hidden') === 'true';
+    this.ribbon.setShowHidden(this.showHidden);
+    this.mainview.setShowHidden(this.showHidden);
 
     this.statusbar.update(0, 0);
 
@@ -1196,6 +1186,12 @@ class WinFileExplorer extends HTMLElement {
     this.addEventListener('nav-up', () => this.goUp());
     this.addEventListener('action', (e) => this.handleAction(e.detail));
     this.addEventListener('search', (e) => this.mainview.filterItems(e.detail));
+    this.addEventListener('toggle-hidden', (e) => {
+      this.showHidden = e.detail;
+      localStorage.setItem('fm-show-hidden', this.showHidden ? 'true' : 'false');
+      this.mainview.setShowHidden(this.showHidden);
+      this.rebuildTree();
+    });
     this.addEventListener('context', (e) => {
       const inTrashView = this.currentView === 'trash';
       const type = e.detail.type;
@@ -1213,14 +1209,12 @@ class WinFileExplorer extends HTMLElement {
       } catch(err) {}
     });
 
-    // 上传完成事件 → 刷新当前目录
     window.addEventListener('upload-complete', (e) => {
       if (e.detail.parentPath === this.currentPath) {
         this.loadPath(this.currentPath, true);
       }
     });
 
-    // 隐藏的 file input
     this.hiddenFileInput.addEventListener('change', (e) => {
       const files = Array.from(e.target.files || []);
       if (files.length > 0) {
@@ -1230,7 +1224,6 @@ class WinFileExplorer extends HTMLElement {
       e.target.value = '';
     });
 
-    // 拖拽上传
     this._setupDragUpload();
 
     document.addEventListener('keydown', (e) => {
@@ -1254,6 +1247,7 @@ class WinFileExplorer extends HTMLElement {
             case 'z': e.preventDefault(); this.handleAction('undo'); break;
             case 'j': e.preventDefault(); downloadManager.togglePanel(); break;
             case 'u': e.preventDefault(); uploadManager.togglePanel(); break;
+            case 'h': e.preventDefault(); { const v = !this.showHidden; this.ribbon.setShowHidden(v); this.showHidden = v; localStorage.setItem('fm-show-hidden', v ? 'true' : 'false'); this.mainview.setShowHidden(v); this.rebuildTree(); break; }
             case 'n': e.preventDefault(); this.handleAction('newfolder'); break; 
           } 
         } 
@@ -1267,6 +1261,27 @@ class WinFileExplorer extends HTMLElement {
       else if (e.key === 'F5') { e.preventDefault(); this.currentView === 'trash' ? this.loadTrash() : this.loadPath(this.currentPath, true); }
     });
 
+    const dConc = document.getElementById('download-concurrency');
+    const uConc = document.getElementById('upload-concurrency');
+    if (dConc) {
+      dConc.value = TRANSFER_CONFIG.downloadConcurrency;
+      dConc.addEventListener('change', (e) => {
+        const v = Math.max(1, Math.min(16, parseInt(e.target.value) || 4));
+        TRANSFER_CONFIG.downloadConcurrency = v;
+        e.target.value = v;
+        showToast(`下载并发数已设为 ${v}`);
+      });
+    }
+    if (uConc) {
+      uConc.value = TRANSFER_CONFIG.uploadConcurrency;
+      uConc.addEventListener('change', (e) => {
+        const v = Math.max(1, Math.min(16, parseInt(e.target.value) || 4));
+        TRANSFER_CONFIG.uploadConcurrency = v;
+        e.target.value = v;
+        showToast(`上传并发数已设为 ${v}`);
+      });
+    }
+
     try {
       this.storageMode = await API.getMode();
     } catch(e) { this.storageMode = 'disk'; }
@@ -1278,7 +1293,6 @@ class WinFileExplorer extends HTMLElement {
     this.refreshTrashBadge();
   }
 
-  // 拖拽上传
   _setupDragUpload() {
     const mc = this.mainContentEl;
     let dragCounter = 0;
@@ -1286,11 +1300,8 @@ class WinFileExplorer extends HTMLElement {
       if (!e.dataTransfer?.types?.includes('Files')) return;
       e.preventDefault();
       dragCounter++;
-      if (this.currentPath === '') {
-        this.dropText.textContent = '请先进入一个目录再拖拽上传';
-      } else {
-        this.dropText.textContent = `松开以上传文件到: ${this.currentPath}`;
-      }
+      if (this.currentPath === '') { this.dropText.textContent = '请先进入一个目录再拖拽上传'; }
+      else { this.dropText.textContent = `松开以上传文件到: ${this.currentPath}`; }
       this.dropOverlay.classList.add('active');
     });
     mc.addEventListener('dragover', (e) => {
@@ -1300,10 +1311,7 @@ class WinFileExplorer extends HTMLElement {
     });
     mc.addEventListener('dragleave', (e) => {
       dragCounter--;
-      if (dragCounter <= 0) {
-        dragCounter = 0;
-        this.dropOverlay.classList.remove('active');
-      }
+      if (dragCounter <= 0) { dragCounter = 0; this.dropOverlay.classList.remove('active'); }
     });
     mc.addEventListener('drop', (e) => {
       e.preventDefault();
@@ -1326,33 +1334,28 @@ class WinFileExplorer extends HTMLElement {
 
   async loadTrash() {
     try {
-      this.mainview.showSkeleton(true);
       const items = await API.getTrashList();
       this.currentView = 'trash';
       this.currentPath = '$TRASH';
       this.addressbar.setPath('回收站', [{ path: '', name: '此电脑' }, { path: '$TRASH', name: '回收站' }]);
       this.addressbar.updateNavState(false, false, false);
-      this.mainview.showSkeleton(false);
       this.mainview.setItems(items);
       this.realTree.querySelectorAll('[selected]').forEach(el => el.removeAttribute('selected'));
       this.trashBtn.classList.add('active');
       this.refreshTrashBadge();
-    } catch (e) { this.mainview.showSkeleton(false); }
+    } catch (e) { }
   }
 
   async rebuildTree() {
     const openPaths = new Set([...this.realTree.querySelectorAll('collapsible-item[open]')].map(el => el.getAttribute('path')));
     this.realTree.innerHTML = '';
-
     const isDisk = this.storageMode === 'disk';
     const rootLabel = isDisk ? '此电脑' : 'C:';
     const rootPath = isDisk ? '' : 'C:';
-
     const rootItem = document.createElement('collapsible-item');
     rootItem.setAttribute('label', rootLabel);
     rootItem.setAttribute('path', rootPath);
     this.realTree.appendChild(rootItem);
-
     const restore = async (node, path) => {
       if (path === rootPath || openPaths.has(path)) {
         await this.loadTreeFolders(path, node, false);
@@ -1363,7 +1366,6 @@ class WinFileExplorer extends HTMLElement {
       }
     };
     await restore(rootItem, rootPath);
-
     if (this.currentView === 'explorer') this.syncTreeState(this.currentPath);
   }
 
@@ -1371,7 +1373,8 @@ class WinFileExplorer extends HTMLElement {
     if (parentElement.hasAttribute('loaded')) return;
     try {
       const items = await API.getFolderContents(path);
-      const folders = items.filter(i => i.type === 'folder');
+      let folders = items.filter(i => i.type === 'folder');
+      if (!this.showHidden) folders = folders.filter(f => !f.hidden);
       parentElement.innerHTML = '';
       folders.forEach(f => {
         const item = document.createElement('collapsible-item');
@@ -1399,7 +1402,14 @@ class WinFileExplorer extends HTMLElement {
     this.realTree.querySelectorAll('[selected]').forEach(el => el.removeAttribute('selected'));
     if (currentContainer !== this.realTree) {
       currentContainer.setAttribute('selected', '');
-      currentContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const sc = this.sidebarScroll;
+      if (sc) {
+        const nodeRect = currentContainer.getBoundingClientRect();
+        const scRect = sc.getBoundingClientRect();
+        if (nodeRect.top < scRect.top || nodeRect.bottom > scRect.bottom) {
+          sc.scrollTop += nodeRect.top - scRect.top - 40;
+        }
+      }
     }
   }
 
@@ -1421,10 +1431,7 @@ class WinFileExplorer extends HTMLElement {
     if (this.currentPath === '' || this.currentPath === '/') return;
     if (this.storageMode === 'disk') {
       const parts = this.currentPath.split('/');
-      if (parts.length <= 1) {
-        this.loadPath('');
-        return;
-      }
+      if (parts.length <= 1) { this.loadPath(''); return; }
       parts.pop();
       const parent = parts.join('/');
       this.loadPath(parent === '' ? '' : parent);
@@ -1435,7 +1442,7 @@ class WinFileExplorer extends HTMLElement {
 
   async loadPath(path, isHistoryTravel = false) {
     try {
-      this.mainview.showSkeleton(true);
+      this.mainview.setLoading(true);
       const ancestors = await API.getAncestors(path);
       const items = await API.getFolderContents(path);
       this.currentView = 'explorer';
@@ -1444,44 +1451,35 @@ class WinFileExplorer extends HTMLElement {
       this.addressbar.setPath(path || '此电脑', ancestors);
       const canUp = this.storageMode === 'disk' ? (path !== '' && path !== '/') : (path !== 'C:');
       this.addressbar.updateNavState(this.historyIndex > 0, this.historyIndex < this.history.length - 1, canUp);
-      this.mainview.showSkeleton(false); 
       this.mainview.setItems(items); 
       this.syncTreeState(path);
       this.trashBtn.classList.remove('active');
-    } catch (e) { this.mainview.showSkeleton(false); }
+    } catch (e) { 
+      showToast(e.response?.data?.error || e.message || '加载失败', true); 
+    } finally {
+      this.mainview.setLoading(false);
+    }
   }
 
-  // ============ v8: 真实预览 ============
   async showPreview(path) {
     const ext = path.split('.').pop().toLowerCase();
     const name = path.split('/').pop();
     const body = document.getElementById('preview-body');
     document.getElementById('preview-title').innerText = name + ' - 预览';
     document.getElementById('preview-modal').classList.add('active');
-
     const imgExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'];
     const videoExts = ['mp4', 'webm', 'mov', 'mkv', 'ogv'];
     const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac'];
     const textExts = ['txt', 'md', 'log', 'json', 'xml', 'html', 'htm',
         'js', 'css', 'go', 'py', 'java', 'c', 'cpp', 'h', 'ts', 'tsx', 'jsx',
         'yml', 'yaml', 'toml', 'ini', 'conf', 'sh', 'bat', 'ps1', 'env', 'mod', 'sum'];
-
     const url = API.previewUrl(path);
-
     if (imgExts.includes(ext)) {
-      body.innerHTML = `<div style="flex:1; display:flex; align-items:center; justify-content:center; background:#1a1a1a; overflow:auto; min-height:0;">
-        <img src="${url}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="${escapeHtml(name)}">
-      </div>`;
+      body.innerHTML = `<div style="flex:1; display:flex; align-items:center; justify-content:center; background:#1a1a1a; overflow:auto; min-height:0;"><img src="${url}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="${escapeHtml(name)}"></div>`;
     } else if (videoExts.includes(ext)) {
-      body.innerHTML = `<div style="flex:1; display:flex; align-items:center; justify-content:center; background:#000; min-height:0;">
-        <video src="${url}" controls preload="metadata" style="max-width:100%; max-height:100%;"></video>
-      </div>`;
+      body.innerHTML = `<div style="flex:1; display:flex; align-items:center; justify-content:center; background:#000; min-height:0;"><video src="${url}" controls preload="metadata" style="max-width:100%; max-height:100%;"></video></div>`;
     } else if (audioExts.includes(ext)) {
-      body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px; gap:20px;">
-        <div style="width:100px; height:100px;">${getSvg('image', '#0090ff')}</div>
-        <div style="font-size:14px; color:var(--slate-9);">${escapeHtml(name)}</div>
-        <audio src="${url}" controls preload="metadata" style="width:100%; max-width:500px;"></audio>
-      </div>`;
+      body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px; gap:20px;"><div style="width:100px; height:100px;">${getSvg('image', '#0090ff')}</div><div style="font-size:14px; color:var(--slate-9);">${escapeHtml(name)}</div><audio src="${url}" controls preload="metadata" style="width:100%; max-width:500px;"></audio></div>`;
     } else if (textExts.includes(ext)) {
       body.innerHTML = `<div style="flex:1; display:flex; align-items:center; justify-content:center; color: var(--slate-8);">加载中...</div>`;
       try {
@@ -1493,11 +1491,7 @@ class WinFileExplorer extends HTMLElement {
         body.innerHTML = `<div style="padding:20px; color:#E5484D; font-family: monospace;">加载失败: ${escapeHtml(e.message)}</div>`;
       }
     } else {
-      body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color: var(--slate-8); gap:16px;">
-        <div style="width:80px; height:80px;">${getSvg('file', '#8f8f8f')}</div>
-        <div>暂不支持预览此类型</div>
-        <div style="font-size:12px;">${escapeHtml(name)}</div>
-      </div>`;
+      body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color: var(--slate-8); gap:16px;"><div style="width:80px; height:80px;">${getSvg('file', '#8f8f8f')}</div><div>暂不支持预览此类型</div><div style="font-size:12px;">${escapeHtml(name)}</div></div>`;
     }
   }
 
@@ -1542,15 +1536,13 @@ class WinFileExplorer extends HTMLElement {
       else if (action === 'copy') {
         if (inTrash) return showToast("回收站中的项无法复制", true);
         if (!selected.length) return showToast("请先选择要复制的项", true);
-        clipboard.mode = 'copy';
-        clipboard.paths = [...selected];
+        clipboard.mode = 'copy'; clipboard.paths = [...selected];
         showToast(`已复制 ${selected.length} 项到剪贴板`);
       }
       else if (action === 'cut') {
         if (inTrash) return showToast("回收站中的项无法剪切", true);
         if (!selected.length) return showToast("请先选择要剪切的项", true);
-        clipboard.mode = 'cut';
-        clipboard.paths = [...selected];
+        clipboard.mode = 'cut'; clipboard.paths = [...selected];
         showToast(`已剪切 ${selected.length} 项到剪贴板`);
       }
       else if (action === 'paste') {
@@ -1636,28 +1628,21 @@ class WinFileExplorer extends HTMLElement {
          document.getElementById('prop-body').innerHTML = `<div class="prop-row"><span>类型：</span><span>${prop.type === 'folder' ? '文件夹' : '文件'}</span></div><div class="prop-row"><span>位置：</span><span style="word-break:break-all">${selected[0]}</span></div><div class="prop-row"><span>大小：</span><span>${formatBytes(prop.size)}</span></div><div class="prop-row"><span>创建时间：</span><span>${prop.created}</span></div><div class="prop-row"><span>修改时间：</span><span>${prop.modified}</span></div>${extra}`;
          document.getElementById('prop-modal').classList.add('active');
       }
-      // v8: 下载 —— 文件直接下；文件夹打包 zip；混合一起 zip
       else if (action === 'download') {
          if (inTrash) return showToast("回收站中的项无法下载", true);
          if (!selected.length) return showToast("请先选择要下载的项目", true);
-
-         // 检查是否包含目录
          const hasFolder = selected.some(p => {
            const item = this.mainview.items.find(i => i.path === p);
            return item && item.type === 'folder';
          });
-
          if (!hasFolder) {
-           // 全是文件：逐个下载
            selected.forEach(p => downloadManager.addFile(p));
            showToast(`已添加 ${selected.length} 个下载任务`);
          } else {
-           // 有目录：打包 zip
            await downloadManager.addZip(selected);
            showToast(`已添加打包下载任务（${selected.length} 项）`);
          }
       }
-      // v8: 上传按钮 —— 打开文件选择器
       else if (action === 'upload') {
         if (inTrash) return showToast("回收站中无法上传", true);
         if (this.currentPath === '') return showToast("请进入具体目录后再上传", true);

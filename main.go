@@ -34,7 +34,6 @@ const (
 	UPLOAD_TMP_DIR = ".file_explorer_uploads"
 )
 
-// ================= 通用模型 =================
 type Node struct {
 	Type     string   `json:"type"`
 	Name     string   `json:"name"`
@@ -51,7 +50,6 @@ type TrashMeta struct {
 	DeletedAt    string `json:"deletedAt"`
 }
 
-// ================= VFS =================
 type FileSystem struct {
 	mu   sync.RWMutex
 	data map[string]*Node
@@ -63,10 +61,8 @@ var undoSnapshotVFS *struct {
 	data      map[string]*Node
 	trashMeta map[string]TrashMeta
 }
-
 var diskTrashMeta = map[string]TrashMeta{}
 
-// ================= Zip 任务 =================
 type ZipTask struct {
 	Token     string
 	Name      string
@@ -75,11 +71,9 @@ type ZipTask struct {
 	TempPath  string
 	CreatedAt time.Time
 }
-
 var zipTasks = map[string]*ZipTask{}
 var zipMu sync.Mutex
 
-// ================= 上传任务 =================
 type UploadTask struct {
 	ID         string
 	Name       string
@@ -90,11 +84,9 @@ type UploadTask struct {
 	Chunks     map[int]bool
 	CreatedAt  time.Time
 }
-
 var uploadTasks = map[string]*UploadTask{}
 var uploadMu sync.Mutex
 
-// ================= 工具 =================
 func normalizePath(parts ...string) string {
 	p := strings.Join(parts, "/")
 	for strings.Contains(p, "//") {
@@ -102,11 +94,7 @@ func normalizePath(parts ...string) string {
 	}
 	return strings.TrimSuffix(p, "/")
 }
-
-func nowStr() string {
-	return time.Now().Format("2006/1/2 15:04:05")
-}
-
+func nowStr() string { return time.Now().Format("2006/1/2 15:04:05") }
 func parentOf(path string) (string, string) {
 	idx := strings.LastIndex(path, "/")
 	if idx < 0 {
@@ -118,17 +106,14 @@ func parentOf(path string) (string, string) {
 	}
 	return parent, path[idx+1:]
 }
-
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
-
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
-
 func randomToken() string {
 	b := make([]byte, 16)
 	if _, err := crand.Read(b); err != nil {
@@ -136,7 +121,6 @@ func randomToken() string {
 	}
 	return hex.EncodeToString(b)
 }
-
 func vfsUniqueName(targetParent, baseName string) string {
 	finalName := baseName
 	counter := 1
@@ -155,7 +139,6 @@ func vfsUniqueName(targetParent, baseName string) string {
 		counter++
 	}
 }
-
 func snapshotVFS() {
 	snapData := make(map[string]*Node, len(FS.data))
 	for k, v := range FS.data {
@@ -175,7 +158,6 @@ func snapshotVFS() {
 		trashMeta map[string]TrashMeta
 	}{snapData, snapMeta}
 }
-
 func initVFS() {
 	ts := nowStr()
 	add := func(path, typ, name string, size int64) {
@@ -190,6 +172,8 @@ func initVFS() {
 	FS.data["C:/Windows"].Children = []string{"explorer.exe"}
 	add("C:/Users/readme.md", "file", "readme.md", int64(rand.Intn(50000)+100))
 	FS.data["C:/Users"].Children = []string{"readme.md"}
+	add("C:/Users/.gitconfig", "file", ".gitconfig", 512)
+	FS.data["C:/Users"].Children = append(FS.data["C:/Users"].Children, ".gitconfig")
 	for i := 1; i <= 1000; i++ {
 		fn := fmt.Sprintf("File_%d.txt", i)
 		p := "C:/MassiveData/" + fn
@@ -200,7 +184,6 @@ func initVFS() {
 	FS.data[TRASH_ROOT].Children = []string{}
 	fmt.Printf("[VFS] 初始化完成，共 %d 个节点\n", len(FS.data))
 }
-
 func toOSPath(p string) string {
 	if runtime.GOOS == "windows" {
 		if len(p) == 2 && p[1] == ':' {
@@ -213,7 +196,6 @@ func toOSPath(p string) string {
 	}
 	return p
 }
-
 func hasSubDir(absDir string) bool {
 	entries, err := os.ReadDir(absDir)
 	if err != nil {
@@ -226,7 +208,6 @@ func hasSubDir(absDir string) bool {
 	}
 	return false
 }
-
 func listDrives() []map[string]interface{} {
 	result := []map[string]interface{}{}
 	if runtime.GOOS == "windows" {
@@ -236,7 +217,7 @@ func listDrives() []map[string]interface{} {
 				result = append(result, map[string]interface{}{
 					"path": drive, "type": "folder", "name": drive,
 					"size": int64(0), "created": "", "modified": "",
-					"owner": "", "perms": "", "hasSubFolders": true,
+					"owner": "", "perms": "", "hasSubFolders": true, "hidden": false,
 				})
 			}
 		}
@@ -244,12 +225,11 @@ func listDrives() []map[string]interface{} {
 		result = append(result, map[string]interface{}{
 			"path": "/", "type": "folder", "name": "/",
 			"size": int64(0), "created": "", "modified": "",
-			"owner": "", "perms": "", "hasSubFolders": true,
+			"owner": "", "perms": "", "hasSubFolders": true, "hidden": false,
 		})
 	}
 	return result
 }
-
 func sha256File(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -262,7 +242,6 @@ func sha256File(path string) (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
-
 func copyFileOrDir(src, dst string) error {
 	info, err := os.Stat(src)
 	if err != nil {
@@ -296,12 +275,16 @@ func copyFileOrDir(src, dst string) error {
 	_, err = io.Copy(out, in)
 	return err
 }
+func isHidden(name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	return false
+}
 
-// ================= 原有 Handlers =================
 func handleMode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"mode": STORAGE_MODE})
 }
-
 func handleFolderContents(w http.ResponseWriter, r *http.Request) {
 	if STORAGE_MODE == ModeDisk {
 		handleFolderContentsDisk(w, r)
@@ -309,7 +292,6 @@ func handleFolderContents(w http.ResponseWriter, r *http.Request) {
 	}
 	handleFolderContentsVFS(w, r)
 }
-
 func handleFolderContentsDisk(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if path == "" {
@@ -343,13 +325,12 @@ func handleFolderContentsDisk(w http.ResponseWriter, r *http.Request) {
 			"size": info.Size(),
 			"created": info.ModTime().Format("2006/1/2 15:04:05"),
 			"modified": info.ModTime().Format("2006/1/2 15:04:05"),
-			"owner": "user", "perms": "读/写",
-			"hasSubFolders": sub,
+			"owner": "user", "perms": "读/写", "hasSubFolders": sub,
+			"hidden": isHidden(name),
 		})
 	}
 	writeJSON(w, 200, items)
 }
-
 func handleFolderContentsVFS(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if path == "" {
@@ -382,11 +363,11 @@ func handleFolderContentsVFS(w http.ResponseWriter, r *http.Request) {
 			"path": cp, "type": child.Type, "name": child.Name,
 			"size": child.Size, "created": child.Created, "modified": child.Modified,
 			"owner": child.Owner, "perms": child.Perms, "hasSubFolders": sub,
+			"hidden": isHidden(child.Name),
 		})
 	}
 	writeJSON(w, 200, items)
 }
-
 func handleAncestors(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if path == "" {
@@ -442,7 +423,6 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	handleDeleteVFS(w, r)
 }
-
 func handleDeleteDisk(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
@@ -471,7 +451,6 @@ func handleDeleteDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
-
 func handleDeleteVFS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
@@ -533,7 +512,6 @@ func handleDeleteVFS(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
-
 func handleTrashList(w http.ResponseWriter, r *http.Request) {
 	if STORAGE_MODE == ModeDisk {
 		handleTrashListDisk(w, r)
@@ -541,7 +519,6 @@ func handleTrashList(w http.ResponseWriter, r *http.Request) {
 	}
 	handleTrashListVFS(w, r)
 }
-
 func handleTrashListDisk(w http.ResponseWriter, r *http.Request) {
 	entries, err := os.ReadDir(DISK_TRASH_DIR)
 	if err != nil {
@@ -566,14 +543,12 @@ func handleTrashListDisk(w http.ResponseWriter, r *http.Request) {
 			"created": info.ModTime().Format("2006/1/2 15:04:05"),
 			"modified": info.ModTime().Format("2006/1/2 15:04:05"),
 			"owner": "", "perms": "", "hasSubFolders": false,
-			"inTrash": true,
-			"originalPath": meta.OriginalPath,
-			"deletedAt": meta.DeletedAt,
+			"inTrash": true, "hidden": false,
+			"originalPath": meta.OriginalPath, "deletedAt": meta.DeletedAt,
 		})
 	}
 	writeJSON(w, 200, items)
 }
-
 func handleTrashListVFS(w http.ResponseWriter, r *http.Request) {
 	FS.mu.RLock()
 	defer FS.mu.RUnlock()
@@ -594,12 +569,12 @@ func handleTrashListVFS(w http.ResponseWriter, r *http.Request) {
 			"path": cp, "type": child.Type, "name": child.Name,
 			"size": child.Size, "created": child.Created, "modified": child.Modified,
 			"owner": child.Owner, "perms": child.Perms, "hasSubFolders": false,
-			"inTrash": true, "originalPath": meta.OriginalPath, "deletedAt": meta.DeletedAt,
+			"inTrash": true, "hidden": false,
+			"originalPath": meta.OriginalPath, "deletedAt": meta.DeletedAt,
 		})
 	}
 	writeJSON(w, 200, items)
 }
-
 func handleTrashRestore(w http.ResponseWriter, r *http.Request) {
 	if STORAGE_MODE == ModeDisk {
 		handleTrashRestoreDisk(w, r)
@@ -607,7 +582,6 @@ func handleTrashRestore(w http.ResponseWriter, r *http.Request) {
 	}
 	handleTrashRestoreVFS(w, r)
 }
-
 func handleTrashRestoreDisk(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
@@ -649,7 +623,6 @@ func handleTrashRestoreDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
-
 func handleTrashRestoreVFS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
@@ -726,7 +699,6 @@ func handleTrashRestoreVFS(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
-
 func handleTrashPurge(w http.ResponseWriter, r *http.Request) {
 	if STORAGE_MODE == ModeDisk {
 		handleTrashPurgeDisk(w, r)
@@ -734,7 +706,6 @@ func handleTrashPurge(w http.ResponseWriter, r *http.Request) {
 	}
 	handleTrashPurgeVFS(w, r)
 }
-
 func handleTrashPurgeDisk(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
@@ -760,7 +731,6 @@ func handleTrashPurgeDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
-
 func handleTrashPurgeVFS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
@@ -822,7 +792,6 @@ func handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	handleCreateVFS(w, r)
 }
-
 func handleCreateDisk(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ParentPath string `json:"parentPath"`
@@ -858,7 +827,6 @@ func handleCreateDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"path": newPath})
 }
-
 func handleCreateVFS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ParentPath string `json:"parentPath"`
@@ -897,7 +865,6 @@ func handleRename(w http.ResponseWriter, r *http.Request) {
 	}
 	handleRenameVFS(w, r)
 }
-
 func handleRenameDisk(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		OldPath string `json:"oldPath"`
@@ -921,7 +888,6 @@ func handleRenameDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"path": newPath})
 }
-
 func handleRenameVFS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		OldPath string `json:"oldPath"`
@@ -975,7 +941,6 @@ func handleMove(w http.ResponseWriter, r *http.Request) {
 	}
 	handleMoveVFS(w, r)
 }
-
 func handleMoveDisk(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Sources      []string `json:"sources"`
@@ -1017,7 +982,6 @@ func handleMoveDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
-
 func handleMoveVFS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Sources      []string `json:"sources"`
@@ -1091,7 +1055,6 @@ func handleCopy(w http.ResponseWriter, r *http.Request) {
 	}
 	handleCopyVFS(w, r)
 }
-
 func handleCopyDisk(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Sources      []string `json:"sources"`
@@ -1134,7 +1097,6 @@ func handleCopyDisk(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
-
 func handleCopyVFS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Sources      []string `json:"sources"`
@@ -1252,10 +1214,8 @@ func handleProperties(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, node)
 }
 
-// ================= 下载（文件分片）=================
 func handleDownloadMeta(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
-
 	if STORAGE_MODE == ModeVFS {
 		FS.mu.RLock()
 		node, ok := FS.data[path]
@@ -1273,12 +1233,10 @@ func handleDownloadMeta(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, map[string]interface{}{
 			"name": node.Name, "size": node.Size, "sha256": "",
-			"chunkSize": CHUNK_SIZE, "totalChunks": totalChunks,
-			"virtual": true,
+			"chunkSize": CHUNK_SIZE, "totalChunks": totalChunks, "virtual": true,
 		})
 		return
 	}
-
 	absPath := toOSPath(path)
 	info, err := os.Stat(absPath)
 	if err != nil || info.IsDir() {
@@ -1296,11 +1254,9 @@ func handleDownloadMeta(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]interface{}{
 		"name": filepath.Base(absPath), "size": size, "sha256": sha,
-		"chunkSize": CHUNK_SIZE, "totalChunks": totalChunks,
-		"virtual": false,
+		"chunkSize": CHUNK_SIZE, "totalChunks": totalChunks, "virtual": false,
 	})
 }
-
 func handleDownloadChunk(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	indexStr := r.URL.Query().Get("index")
@@ -1309,7 +1265,6 @@ func handleDownloadChunk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "无效分片索引")
 		return
 	}
-
 	if STORAGE_MODE == ModeVFS {
 		FS.mu.RLock()
 		node, ok := FS.data[path]
@@ -1346,7 +1301,6 @@ func handleDownloadChunk(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
 	absPath := toOSPath(path)
 	f, err := os.Open(absPath)
 	if err != nil {
@@ -1377,9 +1331,6 @@ func handleDownloadChunk(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.CopyN(w, f, n)
 }
 
-// ================= 文件夹 zip 打包下载 =================
-
-// POST /api/download/zip/prepare
 func handleZipPrepare(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
@@ -1392,13 +1343,10 @@ func handleZipPrepare(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "未选择任何项")
 		return
 	}
-
 	if err := os.MkdirAll(ZIP_TMP_DIR, 0755); err != nil {
 		writeError(w, 500, "无法创建临时目录: "+err.Error())
 		return
 	}
-
-	// 计算 zip 文件名
 	var name string
 	if len(req.Paths) == 1 {
 		base := filepath.Base(toOSPath(req.Paths[0]))
@@ -1406,27 +1354,23 @@ func handleZipPrepare(w http.ResponseWriter, r *http.Request) {
 	} else {
 		name = "archive.zip"
 	}
-
 	token := randomToken()
 	tmpPath := filepath.Join(ZIP_TMP_DIR, token+".zip")
-
 	out, err := os.Create(tmpPath)
 	if err != nil {
 		writeError(w, 500, err.Error())
 		return
 	}
 	zw := zip.NewWriter(out)
-
 	for _, p := range req.Paths {
 		absPath := toOSPath(p)
 		info, err := os.Stat(absPath)
 		if err != nil {
 			continue
 		}
-
 		if info.IsDir() {
 			rootDir := filepath.Dir(absPath)
-			walkErr := filepath.Walk(absPath, func(path string, fi os.FileInfo, err error) error {
+			filepath.Walk(absPath, func(path string, fi os.FileInfo, err error) error {
 				if err != nil || fi.IsDir() {
 					return nil
 				}
@@ -1447,9 +1391,6 @@ func handleZipPrepare(w http.ResponseWriter, r *http.Request) {
 				src.Close()
 				return nil
 			})
-			if walkErr != nil {
-				continue
-			}
 		} else {
 			fw, err := zw.Create(info.Name())
 			if err != nil {
@@ -1463,10 +1404,8 @@ func handleZipPrepare(w http.ResponseWriter, r *http.Request) {
 			src.Close()
 		}
 	}
-
 	zw.Close()
 	out.Close()
-
 	sha, _ := sha256File(tmpPath)
 	finalInfo, _ := os.Stat(tmpPath)
 	if finalInfo == nil {
@@ -1474,26 +1413,18 @@ func handleZipPrepare(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "生成 zip 失败")
 		return
 	}
-
 	zipMu.Lock()
-	zipTasks[token] = &ZipTask{
-		Token: token, Name: name, Size: finalInfo.Size(),
-		SHA256: sha, TempPath: tmpPath, CreatedAt: time.Now(),
-	}
+	zipTasks[token] = &ZipTask{Token: token, Name: name, Size: finalInfo.Size(), SHA256: sha, TempPath: tmpPath, CreatedAt: time.Now()}
 	zipMu.Unlock()
-
 	totalChunks := (finalInfo.Size() + CHUNK_SIZE - 1) / CHUNK_SIZE
 	if totalChunks == 0 {
 		totalChunks = 1
 	}
-
 	writeJSON(w, 200, map[string]interface{}{
 		"token": token, "name": name, "size": finalInfo.Size(),
 		"sha256": sha, "chunkSize": CHUNK_SIZE, "totalChunks": totalChunks,
 	})
 }
-
-// GET /api/download/zip/chunk?token=xxx&index=N
 func handleZipChunk(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	indexStr := r.URL.Query().Get("index")
@@ -1502,7 +1433,6 @@ func handleZipChunk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "无效分片索引")
 		return
 	}
-
 	zipMu.Lock()
 	task, ok := zipTasks[token]
 	zipMu.Unlock()
@@ -1510,14 +1440,12 @@ func handleZipChunk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "zip 任务不存在或已过期")
 		return
 	}
-
 	f, err := os.Open(task.TempPath)
 	if err != nil {
 		writeError(w, 404, "zip 文件已丢失")
 		return
 	}
 	defer f.Close()
-
 	offset := int64(index) * CHUNK_SIZE
 	if offset >= task.Size {
 		writeError(w, 416, "分片越界")
@@ -1535,8 +1463,6 @@ func handleZipChunk(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", n))
 	_, _ = io.CopyN(w, f, n)
 }
-
-// DELETE /api/download/zip/cleanup?token=xxx
 func handleZipCleanup(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	zipMu.Lock()
@@ -1547,7 +1473,6 @@ func handleZipCleanup(w http.ResponseWriter, r *http.Request) {
 	zipMu.Unlock()
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
-
 func cleanupZipTasks() {
 	for {
 		time.Sleep(10 * time.Minute)
@@ -1563,9 +1488,6 @@ func cleanupZipTasks() {
 	}
 }
 
-// ================= 上传（分片 + SHA-256）=================
-
-// POST /api/upload/init
 func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name       string `json:"name"`
@@ -1581,16 +1503,12 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "参数不完整")
 		return
 	}
-
-	// 稳定的 uploadId：name + size + sha256 + parentPath
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s|%s", req.Name, req.Size, req.SHA256, req.ParentPath)))
 	id := hex.EncodeToString(h[:16])
-
 	if err := os.MkdirAll(UPLOAD_TMP_DIR, 0755); err != nil {
 		writeError(w, 500, "无法创建上传目录: "+err.Error())
 		return
 	}
-
 	uploadMu.Lock()
 	task, exists := uploadTasks[id]
 	if !exists {
@@ -1616,14 +1534,8 @@ func handleUploadInit(w http.ResponseWriter, r *http.Request) {
 		uploaded = append(uploaded, idx)
 	}
 	uploadMu.Unlock()
-
-	writeJSON(w, 200, map[string]interface{}{
-		"uploadId":       id,
-		"uploadedChunks": uploaded,
-	})
+	writeJSON(w, 200, map[string]interface{}{"uploadId": id, "uploadedChunks": uploaded})
 }
-
-// PUT /api/upload/chunk?uploadId=xxx&index=N
 func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("uploadId")
 	indexStr := r.URL.Query().Get("index")
@@ -1632,7 +1544,6 @@ func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "无效分片索引")
 		return
 	}
-
 	uploadMu.Lock()
 	task, ok := uploadTasks[id]
 	uploadMu.Unlock()
@@ -1640,7 +1551,6 @@ func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "上传任务不存在")
 		return
 	}
-
 	chunkPath := filepath.Join(task.TempDir, fmt.Sprintf("chunk_%d", index))
 	f, err := os.Create(chunkPath)
 	if err != nil {
@@ -1652,15 +1562,11 @@ func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
-
 	uploadMu.Lock()
 	task.Chunks[index] = true
 	uploadMu.Unlock()
-
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
-
-// POST /api/upload/complete
 func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UploadID string `json:"uploadId"`
@@ -1669,7 +1575,6 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "无效请求")
 		return
 	}
-
 	uploadMu.Lock()
 	task, ok := uploadTasks[req.UploadID]
 	uploadMu.Unlock()
@@ -1677,21 +1582,17 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "上传任务不存在")
 		return
 	}
-
 	dstPath := normalizePath(task.ParentPath, task.Name)
 	dstAbs := toOSPath(dstPath)
-
 	out, err := os.Create(dstAbs)
 	if err != nil {
 		writeError(w, 500, "无法写入目标: "+err.Error())
 		return
 	}
-
 	totalChunks := int((task.Size + CHUNK_SIZE - 1) / CHUNK_SIZE)
 	if totalChunks == 0 {
 		totalChunks = 1
 	}
-
 	for i := 0; i < totalChunks; i++ {
 		cp := filepath.Join(task.TempDir, fmt.Sprintf("chunk_%d", i))
 		cf, err := os.Open(cp)
@@ -1705,7 +1606,6 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 		cf.Close()
 	}
 	out.Close()
-
 	if task.SHA256 != "" {
 		actualSha, _ := sha256File(dstAbs)
 		if actualSha != task.SHA256 {
@@ -1714,16 +1614,12 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	os.RemoveAll(task.TempDir)
 	uploadMu.Lock()
 	delete(uploadTasks, req.UploadID)
 	uploadMu.Unlock()
-
 	writeJSON(w, 200, map[string]string{"path": dstPath})
 }
-
-// DELETE /api/upload/cancel?uploadId=xxx
 func handleUploadCancel(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("uploadId")
 	uploadMu.Lock()
@@ -1735,11 +1631,8 @@ func handleUploadCancel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
-// ================= 预览（真实内容）=================
 func handlePreview(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
-
-	// VFS 模式：返回占位文本
 	if STORAGE_MODE == ModeVFS {
 		FS.mu.RLock()
 		node, ok := FS.data[path]
@@ -1752,29 +1645,24 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "// VFS 虚拟文件: %s\n// 大小: %d 字节\n// (虚拟空间模式无真实内容)", node.Name, node.Size)
 		return
 	}
-
 	absPath := toOSPath(path)
 	info, err := os.Stat(absPath)
 	if err != nil || info.IsDir() {
 		writeError(w, 404, "文件不存在")
 		return
 	}
-
-	// 限制预览大小 20MB
 	maxSize := int64(20 * 1024 * 1024)
 	if info.Size() > maxSize {
 		writeError(w, 413, "文件过大，不支持预览")
 		return
 	}
-
-	// 根据扩展名推断 Content-Type
 	ext := strings.ToLower(filepath.Ext(absPath))
 	contentType := "application/octet-stream"
 	switch ext {
 	case ".txt", ".md", ".log", ".json", ".xml", ".html", ".htm",
 		".js", ".css", ".go", ".py", ".java", ".c", ".cpp", ".h",
 		".ts", ".tsx", ".jsx", ".yml", ".yaml", ".toml", ".ini",
-		".conf", ".sh", ".bat", ".ps1", ".env", ".gitignore", ".mod", ".sum":
+		".conf", ".sh", ".bat", ".ps1", ".env", ".mod", ".sum":
 		contentType = "text/plain; charset=utf-8"
 	case ".png":
 		contentType = "image/png"
@@ -1809,9 +1697,7 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 	case ".flac":
 		contentType = "audio/flac"
 	}
-
 	w.Header().Set("Content-Type", contentType)
-	// http.ServeContent 天然支持 Range 请求（视频 seek 需要）
 	f, err := os.Open(absPath)
 	if err != nil {
 		writeError(w, 500, err.Error())
@@ -1821,7 +1707,6 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
-// ================= CORS + main =================
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1845,7 +1730,6 @@ func main() {
 	}
 	os.MkdirAll(ZIP_TMP_DIR, 0755)
 	os.MkdirAll(UPLOAD_TMP_DIR, 0755)
-
 	go cleanupZipTasks()
 
 	mux := http.NewServeMux()
@@ -1867,20 +1751,16 @@ func main() {
 	mux.HandleFunc("/api/items/copy", handleCopy)
 	mux.HandleFunc("/api/items/undo", handleUndo)
 	mux.HandleFunc("/api/properties", handleProperties)
-
 	mux.HandleFunc("/api/download/meta", handleDownloadMeta)
 	mux.HandleFunc("/api/download/chunk", handleDownloadChunk)
 	mux.HandleFunc("/api/download/zip/prepare", handleZipPrepare)
 	mux.HandleFunc("/api/download/zip/chunk", handleZipChunk)
 	mux.HandleFunc("/api/download/zip/cleanup", handleZipCleanup)
-
 	mux.HandleFunc("/api/upload/init", handleUploadInit)
 	mux.HandleFunc("/api/upload/chunk", handleUploadChunk)
 	mux.HandleFunc("/api/upload/complete", handleUploadComplete)
 	mux.HandleFunc("/api/upload/cancel", handleUploadCancel)
-
 	mux.HandleFunc("/api/preview", handlePreview)
-
 	mux.HandleFunc("/api/trash", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -1892,7 +1772,6 @@ func main() {
 		}
 	})
 	mux.HandleFunc("/api/trash/restore", handleTrashRestore)
-
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
 			http.ServeFile(w, r, "file_explorer.html")
