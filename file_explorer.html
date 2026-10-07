@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Windows File Explorer - The Flawless Edition v7</title>
+  <title>Windows File Explorer - The Flawless Edition v8</title>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
   <style>
     :root {
@@ -31,32 +31,41 @@
     .modal-overlay.active { opacity: 1; visibility: visible; }
     .modal-box { background: white; border-radius: 8px; width: 360px; box-shadow: 0 12px 32px rgba(0,0,0,0.15); transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); display: flex; flex-direction: column; max-height: 80vh; }
     .modal-overlay.active .modal-box { transform: scale(1); }
-    .modal-box.large { width: 600px; height: 500px; }
+    .modal-box.large { width: 700px; height: 560px; }
     .modal-header { padding: 12px 16px; border-bottom: 1px solid var(--slate-4); display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 14px; background: var(--slate-2); border-radius: 8px 8px 0 0; }
     .modal-close { cursor: pointer; color: var(--slate-8); font-size: 16px; }
     .modal-close:hover { color: var(--slate-12); }
     .modal-body { padding: 16px; font-size: 13px; line-height: 1.8; color: var(--slate-12); overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
     .prop-row { display: flex; border-bottom: 1px dashed var(--slate-3); padding: 6px 0; }
     .prop-row span:first-child { width: 80px; color: var(--slate-8); flex-shrink: 0; }
-    .download-panel { position: fixed; right: 20px; bottom: 60px; width: 360px; background: white; border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 4000; display: flex; flex-direction: column; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s; backdrop-filter: blur(10px); }
-    .download-panel.show { opacity: 1; visibility: visible; transform: translateY(0); }
-    .download-header { padding: 10px 16px; border-bottom: 1px solid var(--slate-4); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; background: var(--slate-2); border-radius: 8px 8px 0 0; }
-    .download-header-actions { display: flex; align-items: center; gap: 12px; }
-    .download-clear { cursor: pointer; color: var(--slate-8); font-size: 12px; font-weight: 500; }
-    .download-clear:hover { color: var(--blue-9); }
-    .download-body { padding: 8px; max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-    .download-item { font-size: 12px; padding: 8px; border: 1px solid var(--slate-3); border-radius: 6px; background: var(--slate-1); }
-    .download-item:hover { border-color: var(--slate-5); }
-    .download-item-header { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; gap: 6px; }
-    .download-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-weight: 500; color: var(--slate-12); }
-    .download-item-status { color: var(--slate-8); flex-shrink: 0; font-size: 11px; }
-    .download-item-status.ok { color: #2f9e44; }
-    .download-item-status.err { color: #E5484D; }
-    .download-item-remove { color: var(--slate-8); cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s; padding: 0 2px; flex-shrink: 0; font-size: 13px; line-height: 1; }
-    .download-item:hover .download-item-remove { opacity: 1; }
-    .download-item-remove:hover { color: #E5484D; }
-    .download-progress { height: 4px; background: var(--slate-4); border-radius: 2px; overflow: hidden; }
-    .download-progress-bar { height: 100%; background: var(--blue-9); width: 0%; transition: width 0.2s; }
+    /* 下载/上传面板 */
+    .download-panel, .upload-panel { position: fixed; right: 20px; width: 400px; background: white; border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 4000; display: flex; flex-direction: column; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s; backdrop-filter: blur(10px); }
+    .download-panel { bottom: 60px; }
+    .upload-panel { bottom: 60px; }
+    .download-panel.show, .upload-panel.show { opacity: 1; visibility: visible; transform: translateY(0); }
+    .download-panel.shift { bottom: 420px; }
+    .upload-panel.shift { bottom: 420px; }
+    .panel-header { padding: 10px 16px; border-bottom: 1px solid var(--slate-4); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; background: var(--slate-2); border-radius: 8px 8px 0 0; }
+    .panel-header-actions { display: flex; align-items: center; gap: 12px; }
+    .panel-clear { cursor: pointer; color: var(--slate-8); font-size: 12px; font-weight: 500; }
+    .panel-clear:hover { color: var(--blue-9); }
+    .panel-body { padding: 8px; max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .task-item { font-size: 12px; padding: 8px; border: 1px solid var(--slate-3); border-radius: 6px; background: var(--slate-1); }
+    .task-item:hover { border-color: var(--slate-5); }
+    .task-item-header { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; gap: 6px; }
+    .task-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-weight: 500; color: var(--slate-12); }
+    .task-item-status { color: var(--slate-8); flex-shrink: 0; font-size: 11px; }
+    .task-item-status.ok { color: #2f9e44; }
+    .task-item-status.err { color: #E5484D; }
+    .task-item-status.warn { color: #f08c00; }
+    .task-item-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .task-btn { background: transparent; border: 1px solid var(--slate-4); border-radius: 4px; cursor: pointer; color: var(--slate-9); padding: 1px 6px; font-size: 11px; }
+    .task-btn:hover { background: var(--slate-4); color: var(--slate-12); }
+    .task-btn.danger:hover { background: #E5484D; color: white; border-color: #E5484D; }
+    .task-progress { height: 4px; background: var(--slate-4); border-radius: 2px; overflow: hidden; margin-bottom: 4px; }
+    .task-progress-bar { height: 100%; background: var(--blue-9); width: 0%; transition: width 0.2s; }
+    .task-progress-bar.hash { background: #f08c00; }
+    .task-meta { color: var(--slate-8); font-size: 10px; }
   </style>
 </head>
 <body>
@@ -67,15 +76,28 @@
   <div class="modal-overlay" id="prop-modal"><div class="modal-box"><div class="modal-header"><span id="prop-title">文件属性</span><span class="modal-close" onclick="document.getElementById('prop-modal').classList.remove('active')">✖</span></div><div class="modal-body" id="prop-body"></div></div></div>
   <div class="modal-overlay" id="preview-modal"><div class="modal-box large"><div class="modal-header"><span id="preview-title">文件查看</span><span class="modal-close" onclick="document.getElementById('preview-modal').classList.remove('active')">✖</span></div><div class="modal-body" id="preview-body" style="padding: 0; background: var(--slate-1);"></div></div></div>
   
+  <!-- 下载面板 -->
   <div class="download-panel" id="download-panel">
-    <div class="download-header">
+    <div class="panel-header">
       <span>下载列表</span>
-      <div class="download-header-actions">
-        <span class="download-clear" id="download-clear">清空</span>
+      <div class="panel-header-actions">
+        <span class="panel-clear" id="download-clear">清空</span>
         <span class="modal-close" id="download-panel-close">✖</span>
       </div>
     </div>
-    <div class="download-body" id="download-list"></div>
+    <div class="panel-body" id="download-list"></div>
+  </div>
+
+  <!-- 上传面板 -->
+  <div class="upload-panel" id="upload-panel">
+    <div class="panel-header">
+      <span>上传列表</span>
+      <div class="panel-header-actions">
+        <span class="panel-clear" id="upload-clear">清空</span>
+        <span class="modal-close" id="upload-panel-close">✖</span>
+      </div>
+    </div>
+    <div class="panel-body" id="upload-list"></div>
   </div>
 
 <script>
@@ -97,8 +119,11 @@ const SVGS = {
   paste: '<path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/>',
   undo: '<path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>',
   download: '<path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>',
+  upload: '<path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/>',
   trash: '<path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>',
-  computer: '<path d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/>'
+  computer: '<path d="M20 18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/>',
+  play: '<path d="M8 5v14l11-7z"/>',
+  pause: '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'
 };
 const getSvg = (key, color='#8f8f8f') => `<svg viewBox="0 0 24 24" fill="${color}" style="width:100%;height:100%; display:block;">${SVGS[key]||SVGS.file}</svg>`;
 const getFileIconSvg = (name, type) => {
@@ -107,9 +132,10 @@ const getFileIconSvg = (name, type) => {
   switch(ext) { 
     case 'exe': return getSvg('code', '#8f8f8f'); 
     case 'txt': case 'md': return getSvg('txt', '#8f8f8f'); 
-    case 'png': case 'jpg': case 'jpeg': return getSvg('image', '#0090ff'); 
-    case 'js': case 'json': case 'html': return getSvg('code', '#e5484d'); 
-    case 'zip': case 'rar': return getSvg('zip', '#8f8f8f'); 
+    case 'png': case 'jpg': case 'jpeg': case 'gif': case 'webp': case 'bmp': case 'svg': return getSvg('image', '#0090ff'); 
+    case 'js': case 'json': case 'html': case 'css': case 'go': case 'py': return getSvg('code', '#e5484d'); 
+    case 'zip': case 'rar': case '7z': return getSvg('zip', '#8f8f8f'); 
+    case 'mp4': case 'webm': case 'mov': case 'mkv': case 'mp3': case 'wav': case 'ogg': return getSvg('image', '#0090ff');
     default: return getSvg('file', '#8f8f8f'); 
   }
 };
@@ -117,10 +143,12 @@ const normalizePath = (...parts) => parts.join('/').replace(/\/+/g, '/').replace
 const isValidName = (name) => name && name.trim().length > 0 && !/[\\/:*?"<>|]/.test(name);
 const formatBytes = (bytes) => { if(!bytes || bytes===0) return '0 B'; const k=1024, dm=1, sizes=['B','KB','MB','GB'], i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(dm))+' '+sizes[i]; };
 const showToast = (msg, isError = false) => { const container = document.getElementById('toast-container'), toast = document.createElement('div'); toast.className = 'toast'; toast.style.backgroundColor = isError ? 'rgba(229,72,77,0.9)' : ''; toast.innerText = msg; container.appendChild(toast); setTimeout(() => { toast.style.opacity='0'; setTimeout(()=>toast.remove(),300); }, 3500); };
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8080' : '';
 axios.defaults.baseURL = API_BASE;
-axios.defaults.timeout = 120000;
+axios.defaults.timeout = 0; // 无超时
 axios.interceptors.response.use(res => res, err => {
   const msg = err.response?.data?.error || err.message || '网络错误';
   showToast(msg, true);
@@ -128,6 +156,22 @@ axios.interceptors.response.use(res => res, err => {
 });
 
 const clipboard = { mode: null, paths: [] };
+
+// 计算文件 SHA-256（受 crypto.subtle 可用性限制）
+async function computeFileSha256(file, onProgress) {
+  if (!crypto?.subtle) {
+    console.warn('crypto.subtle 不可用（非 HTTPS），跳过 SHA-256');
+    return "";
+  }
+  if (file.size > 500 * 1024 * 1024) {
+    console.warn('文件过大，跳过 SHA-256');
+    return "";
+  }
+  const buf = await file.arrayBuffer();
+  if (onProgress) onProgress(100);
+  const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 const API = {
   async getMode() { const r = await axios.get('/api/mode'); return r.data.mode; },
@@ -149,87 +193,206 @@ const API = {
     const r = await axios.get('/api/download/chunk', { params: { path, index }, responseType: 'arraybuffer' });
     return r.data;
   },
-  async downloadFileWithChunks(path, onProgress, onHashResult) {
-    const meta = await API.getDownloadMeta(path);
-    const totalChunks = meta.totalChunks;
-    const chunks = [];
-    for (let i = 0; i < totalChunks; i++) {
-      const buf = await API.getDownloadChunk(path, i);
-      chunks.push(buf);
-      if (onProgress) onProgress(Math.round(((i + 1) / totalChunks) * 80));
-    }
-    const blob = new Blob(chunks, { type: 'application/octet-stream' });
-    if (onProgress) onProgress(85);
-    if (meta.sha256 && meta.size > 0 && meta.size <= 500 * 1024 * 1024) {
-      try {
-        const arrayBuf = await blob.arrayBuffer();
-        if (onProgress) onProgress(90);
-        const hashBuf = await crypto.subtle.digest('SHA-256', arrayBuf);
-        const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
-        if (onProgress) onProgress(95);
-        if (hashHex !== meta.sha256) {
-          if (onHashResult) onHashResult(false, hashHex);
-          throw new Error(`SHA-256 校验失败\n预期: ${meta.sha256}\n实际: ${hashHex}`);
-        }
-        if (onHashResult) onHashResult(true, hashHex);
-      } catch (e) {
-        if (e.message.startsWith('SHA-256')) throw e;
-        console.warn('SHA-256 计算失败:', e);
-        if (onHashResult) onHashResult(null, '');
-      }
-    } else {
-      if (onHashResult) onHashResult(null, '');
-    }
-    if (onProgress) onProgress(98);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = meta.name || path.split('/').pop() || 'download';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    if (onProgress) onProgress(100);
-  }
+  async zipPrepare(paths) { const r = await axios.post('/api/download/zip/prepare', { paths }); return r.data; },
+  async zipChunk(token, index) {
+    const r = await axios.get('/api/download/zip/chunk', { params: { token, index }, responseType: 'arraybuffer' });
+    return r.data;
+  },
+  async zipCleanup(token) { await axios.delete('/api/download/zip/cleanup', { params: { token } }); },
+
+  async uploadInit(payload) { const r = await axios.post('/api/upload/init', payload); return r.data; },
+  async uploadChunk(uploadId, index, blob) {
+    await axios.put('/api/upload/chunk', blob, {
+      params: { uploadId, index },
+      headers: { 'Content-Type': 'application/octet-stream' }
+    });
+  },
+  async uploadComplete(uploadId) { const r = await axios.post('/api/upload/complete', { uploadId }); return r.data; },
+  async uploadCancel(uploadId) { await axios.delete('/api/upload/cancel', { params: { uploadId } }); },
+  previewUrl(path) { return `${API_BASE}/api/preview?path=${encodeURIComponent(path)}`; }
 };
 
+// ===================== 下载管理器 =====================
 class DownloadManager {
   constructor() {
     this.tasks = [];
     this.panel = document.getElementById('download-panel');
     this.list = document.getElementById('download-list');
-    this.badge = document.getElementById('download-badge');
+    this.badge = null; // 侧边栏 badge 稍后绑定
     this.clearBtn = document.getElementById('download-clear');
     this.closeBtn = document.getElementById('download-panel-close');
     if (this.clearBtn) this.clearBtn.addEventListener('click', (e) => { e.stopPropagation(); this.clearCompleted(); });
     if (this.closeBtn) this.closeBtn.addEventListener('click', () => { this.panel.classList.remove('show'); });
     this.list.addEventListener('click', (e) => {
-      const removeBtn = e.target.closest('.download-item-remove');
-      if (removeBtn) { e.stopPropagation(); this.removeTask(removeBtn.dataset.id); }
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const act = btn.dataset.act;
+      if (act === 'pause') this.pause(id);
+      else if (act === 'resume') this.resume(id);
+      else if (act === 'cancel') this.cancel(id);
+      else if (act === 'remove') this.removeTask(id);
     });
   }
-  add(path) {
+
+  // 单个文件
+  addFile(path) {
     const name = path.split('/').pop() || path;
-    const task = { id: Date.now() + Math.random().toString(36).slice(2), name, path, progress: 0, status: 'downloading', hashOk: null };
+    const task = {
+      id: Date.now() + Math.random().toString(36).slice(2),
+      name, path, isZip: false,
+      status: 'downloading', paused: false, cancelled: false,
+      progress: 0, hashOk: null, chunks: [], meta: null
+    };
     this.tasks.unshift(task);
     this.render();
     this.panel.classList.add('show');
-    API.downloadFileWithChunks(path,
-      (percent) => { task.progress = percent; this.render(); },
-      (ok, hash) => { task.hashOk = ok; }
-    ).then(() => {
+    this._run(task);
+  }
+
+  // 多个目录/文件打包 zip
+  async addZip(paths) {
+    const totalName = paths.length === 1 ? (paths[0].split('/').pop() + '.zip') : `${paths.length}项.zip`;
+    const task = {
+      id: Date.now() + Math.random().toString(36).slice(2),
+      name: totalName, paths, isZip: true,
+      status: 'packing', paused: false, cancelled: false,
+      progress: 0, hashOk: null, chunks: [], meta: null, zipToken: null
+    };
+    this.tasks.unshift(task);
+    this.render();
+    this.panel.classList.add('show');
+    try {
+      const meta = await API.zipPrepare(paths);
+      task.zipToken = meta.token;
+      task.meta = meta;
+      task.name = meta.name;
+      task.status = 'downloading';
+      this.render();
+      this._run(task);
+    } catch (e) {
+      task.status = 'error';
+      task.errorMsg = e.message;
+      this.render();
+    }
+  }
+
+  async _run(task) {
+    try {
+      // 获取 meta
+      if (!task.isZip) {
+        task.meta = await API.getDownloadMeta(task.path);
+      }
+      const meta = task.meta;
+      const totalChunks = meta.totalChunks;
+      task.totalSize = meta.size;
+
+      // 分片下载循环
+      while (task.chunks.length < totalChunks) {
+        if (task.cancelled) throw new Error('__CANCELLED__');
+        while (task.paused && !task.cancelled) await sleep(200);
+        if (task.cancelled) throw new Error('__CANCELLED__');
+
+        const idx = task.chunks.length;
+        let buf;
+        if (task.isZip) {
+          buf = await API.zipChunk(task.zipToken, idx);
+        } else {
+          buf = await API.getDownloadChunk(task.path, idx);
+        }
+        task.chunks.push(buf);
+        task.progress = Math.round(((idx + 1) / totalChunks) * 80);
+        this.render();
+      }
+
+      // 合并
+      task.status = 'merging';
+      task.progress = 85;
+      this.render();
+      const blob = new Blob(task.chunks, { type: 'application/octet-stream' });
+
+      // SHA-256 校验
+      if (meta.sha256 && meta.size > 0 && meta.size <= 500 * 1024 * 1024 && crypto?.subtle) {
+        task.status = 'hashing';
+        task.progress = 90;
+        this.render();
+        try {
+          const arrayBuf = await blob.arrayBuffer();
+          const hashBuf = await crypto.subtle.digest('SHA-256', arrayBuf);
+          const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+          if (hashHex !== meta.sha256) {
+            task.hashOk = false;
+            throw new Error('SHA-256 校验失败');
+          }
+          task.hashOk = true;
+        } catch (e) {
+          if (e.message.includes('SHA-256')) throw e;
+          task.hashOk = null;
+        }
+      }
+
       task.progress = 100;
       task.status = 'completed';
       this.render();
+
       if (task.hashOk === true) showToast(`✓ 已下载并校验通过: ${task.name}`);
-      else if (task.hashOk === false) showToast(`⚠ 下载完成但校验失败: ${task.name}`, true);
+      else if (task.hashOk === false) showToast(`⚠ 校验失败: ${task.name}`, true);
       else showToast(`✓ 已下载: ${task.name}`);
-    }).catch((err) => {
-      task.status = 'error';
-      task.errorMsg = err.message || '下载失败';
+
+      // 触发浏览器下载
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = meta.name || task.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      // 清理临时 zip
+      if (task.isZip && task.zipToken) {
+        API.zipCleanup(task.zipToken).catch(() => {});
+      }
+    } catch (e) {
+      if (task.cancelled) {
+        task.status = 'cancelled';
+        if (task.isZip && task.zipToken) API.zipCleanup(task.zipToken).catch(() => {});
+      } else {
+        task.status = 'error';
+        task.errorMsg = e.message || '下载失败';
+      }
       this.render();
-      showToast(`下载失败: ${err.message || '未知错误'}`, true);
-    });
+    }
+  }
+
+  pause(id) {
+    const t = this.tasks.find(x => x.id === id);
+    if (t && (t.status === 'downloading' || t.status === 'merging' || t.status === 'hashing')) {
+      t.paused = true;
+      t.statusBeforePause = t.status;
+      t.status = 'paused';
+      this.render();
+    }
+  }
+  resume(id) {
+    const t = this.tasks.find(x => x.id === id);
+    if (t && t.status === 'paused') {
+      t.paused = false;
+      t.status = t.statusBeforePause || 'downloading';
+      this.render();
+    }
+  }
+  cancel(id) {
+    const t = this.tasks.find(x => x.id === id);
+    if (!t) return;
+    if (['completed', 'error', 'cancelled'].includes(t.status)) {
+      this.removeTask(id);
+      return;
+    }
+    t.cancelled = true;
+    t.paused = false;
+    this.render();
   }
   removeTask(id) {
     this.tasks = this.tasks.filter(t => t.id !== id);
@@ -238,41 +401,294 @@ class DownloadManager {
   }
   clearCompleted() {
     const before = this.tasks.length;
-    this.tasks = this.tasks.filter(t => t.status === 'downloading');
+    this.tasks = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status));
     const removed = before - this.tasks.length;
     this.render();
     if (this.tasks.length === 0) this.panel.classList.remove('show');
     if (removed > 0) showToast(`已清理 ${removed} 条下载记录`);
   }
-  togglePanel() { this.panel.classList.toggle('show'); }
-  updateBadge() {
-    if (!this.badge) return;
-    const active = this.tasks.filter(t => t.status === 'downloading').length;
-    if (active > 0) { this.badge.textContent = active; this.badge.classList.add('show'); }
-    else { this.badge.classList.remove('show'); }
+  togglePanel() { this.panel.classList.toggle('show'); this.adjustPanelShift(); }
+  adjustPanelShift() {
+    const both = document.getElementById('download-panel').classList.contains('show')
+              && document.getElementById('upload-panel').classList.contains('show');
+    document.getElementById('download-panel').classList.toggle('shift', both);
+    document.getElementById('upload-panel').classList.toggle('shift', both);
+  }
+  updateBadge(badgeEl) {
+    if (!badgeEl) return;
+    const active = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)).length;
+    if (active > 0) { badgeEl.textContent = active; badgeEl.classList.add('show'); }
+    else { badgeEl.classList.remove('show'); }
   }
   render() {
-    this.updateBadge();
+    if (this.badge) this.updateBadge(this.badge);
     if (this.tasks.length === 0) {
       this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`;
       return;
     }
     this.list.innerHTML = this.tasks.map(t => {
-      let statusText, statusClass = '';
-      if (t.status === 'completed') {
-        if (t.hashOk === true) { statusText = '✓ 校验通过'; statusClass = 'ok'; }
-        else if (t.hashOk === false) { statusText = '✗ 校验失败'; statusClass = 'err'; }
-        else { statusText = '已完成'; }
-      } else if (t.status === 'error') { statusText = '失败'; statusClass = 'err'; }
-      else { statusText = Math.floor(t.progress) + '%'; }
+      let statusText = '', statusClass = '';
+      const isActive = ['downloading', 'merging', 'hashing'].includes(t.status);
+      switch (t.status) {
+        case 'packing': statusText = '打包中...'; break;
+        case 'downloading': statusText = Math.floor(t.progress) + '%'; break;
+        case 'merging': statusText = '合并中...'; break;
+        case 'hashing': statusText = '校验中...'; break;
+        case 'paused': statusText = '已暂停'; statusClass = 'warn'; break;
+        case 'cancelled': statusText = '已取消'; statusClass = 'err'; break;
+        case 'completed':
+          if (t.hashOk === true) { statusText = '✓ 校验通过'; statusClass = 'ok'; }
+          else if (t.hashOk === false) { statusText = '✗ 校验失败'; statusClass = 'err'; }
+          else { statusText = '已完成'; statusClass = 'ok'; }
+          break;
+        case 'error': statusText = '失败'; statusClass = 'err'; break;
+      }
       const barColor = (t.status === 'error' || t.hashOk === false) ? 'background:#E5484D;'
-                     : t.hashOk === true ? 'background:#2f9e44;' : '';
-      return `<div class="download-item"><div class="download-item-header"><span class="download-item-name" title="${t.name}">${t.name}</span><span class="download-item-status ${statusClass}">${statusText}</span><span class="download-item-remove" data-id="${t.id}">✖</span></div><div class="download-progress"><div class="download-progress-bar" style="width: ${t.progress}%; ${barColor}"></div></div></div>`;
+                     : t.hashOk === true ? 'background:#2f9e44;'
+                     : t.status === 'paused' ? 'background:#f08c00;'
+                     : t.status === 'hashing' ? 'background:#f08c00;' : '';
+      const canPause = isActive || t.status === 'packing';
+      const canResume = t.status === 'paused';
+      const canCancel = canPause || canResume;
+      const canRemove = !canPause && !canResume;
+
+      let actions = '';
+      if (canPause) actions += `<button class="task-btn" data-act="pause" data-id="${t.id}" title="暂停">❚❚</button>`;
+      if (canResume) actions += `<button class="task-btn" data-act="resume" data-id="${t.id}" title="继续">▶</button>`;
+      if (canCancel) actions += `<button class="task-btn danger" data-act="cancel" data-id="${t.id}" title="取消">✖</button>`;
+      if (canRemove) actions += `<button class="task-btn" data-act="remove" data-id="${t.id}" title="移除">✖</button>`;
+
+      const meta = t.totalSize ? `${formatBytes(t.totalSize)}` : (t.meta ? formatBytes(t.meta.size) : '');
+      const metaLine = meta ? `<div class="task-meta">${meta}${t.isZip ? ' · ZIP' : ''}</div>` : '';
+
+      return `<div class="task-item">
+        <div class="task-item-header">
+          <span class="task-item-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+          <span class="task-item-status ${statusClass}">${statusText}</span>
+          <span class="task-item-actions">${actions}</span>
+        </div>
+        <div class="task-progress"><div class="task-progress-bar ${t.status === 'hashing' ? 'hash' : ''}" style="width: ${t.progress}%; ${barColor}"></div></div>
+        ${metaLine}
+      </div>`;
     }).join('');
   }
 }
 const downloadManager = new DownloadManager();
 
+// ===================== 上传管理器 =====================
+class UploadManager {
+  constructor() {
+    this.tasks = [];
+    this.panel = document.getElementById('upload-panel');
+    this.list = document.getElementById('upload-list');
+    this.badge = null;
+    this.clearBtn = document.getElementById('upload-clear');
+    this.closeBtn = document.getElementById('upload-panel-close');
+    if (this.clearBtn) this.clearBtn.addEventListener('click', (e) => { e.stopPropagation(); this.clearCompleted(); });
+    if (this.closeBtn) this.closeBtn.addEventListener('click', () => { this.panel.classList.remove('show'); this._adjustShift(); });
+    this.list.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const act = btn.dataset.act;
+      if (act === 'pause') this.pause(id);
+      else if (act === 'resume') this.resume(id);
+      else if (act === 'cancel') this.cancel(id);
+      else if (act === 'remove') this.removeTask(id);
+    });
+  }
+
+  add(file, parentPath) {
+    const task = {
+      id: Date.now() + Math.random().toString(36).slice(2),
+      file, name: file.name, size: file.size, parentPath,
+      status: 'hashing', paused: false, cancelled: false,
+      hashProgress: 0, progress: 0,
+      uploadId: null, uploadedChunks: new Set(),
+      sha: ''
+    };
+    this.tasks.unshift(task);
+    this.render();
+    this.panel.classList.add('show');
+    downloadManager.adjustPanelShift();
+    this._run(task);
+  }
+
+  async _run(task) {
+    try {
+      // 1. 计算 SHA-256
+      task.sha = await computeFileSha256(task.file, (p) => {
+        task.hashProgress = p;
+        this.render();
+      });
+      if (task.cancelled) throw new Error('__CANCELLED__');
+
+      // 2. init
+      task.status = 'uploading';
+      this.render();
+      const init = await API.uploadInit({
+        name: task.name, size: task.size, sha256: task.sha, parentPath: task.parentPath
+      });
+      task.uploadId = init.uploadId;
+      task.uploadedChunks = new Set(init.uploadedChunks);
+      if (task.uploadedChunks.size > 0) {
+        showToast(`断点续传: ${task.name} 已跳过 ${task.uploadedChunks.size} 个分片`);
+      }
+
+      // 3. 分片上传
+      const chunkSize = 4 * 1024 * 1024;
+      const total = Math.ceil(task.size / chunkSize) || 1;
+      for (let i = 0; i < total; i++) {
+        if (task.cancelled) throw new Error('__CANCELLED__');
+        while (task.paused && !task.cancelled) await sleep(200);
+        if (task.cancelled) throw new Error('__CANCELLED__');
+
+        if (task.uploadedChunks.has(i)) {
+          task.progress = Math.round(((i + 1) / total) * 100);
+          this.render();
+          continue;
+        }
+
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, task.size);
+        const blob = task.file.slice(start, end);
+        await API.uploadChunk(task.uploadId, i, blob);
+        task.uploadedChunks.add(i);
+        task.progress = Math.round(((i + 1) / total) * 100);
+        this.render();
+      }
+
+      // 4. complete
+      task.status = 'finalizing';
+      this.render();
+      await API.uploadComplete(task.uploadId);
+      task.status = 'completed';
+      task.progress = 100;
+      this.render();
+      showToast(`✓ 上传完成: ${task.name}`);
+
+      // 通知主视图刷新
+      window.dispatchEvent(new CustomEvent('upload-complete', { detail: { parentPath: task.parentPath } }));
+    } catch (e) {
+      if (task.cancelled) {
+        task.status = 'cancelled';
+        if (task.uploadId) API.uploadCancel(task.uploadId).catch(() => {});
+      } else {
+        task.status = 'error';
+        task.errorMsg = e.message;
+        showToast(`上传失败: ${e.message}`, true);
+      }
+      this.render();
+    }
+  }
+
+  pause(id) {
+    const t = this.tasks.find(x => x.id === id);
+    if (t && ['hashing', 'uploading', 'finalizing'].includes(t.status)) {
+      t.paused = true;
+      t.statusBeforePause = t.status;
+      t.status = 'paused';
+      this.render();
+    }
+  }
+  resume(id) {
+    const t = this.tasks.find(x => x.id === id);
+    if (t && t.status === 'paused') {
+      t.paused = false;
+      t.status = t.statusBeforePause || 'uploading';
+      this.render();
+    }
+  }
+  cancel(id) {
+    const t = this.tasks.find(x => x.id === id);
+    if (!t) return;
+    if (['completed', 'error', 'cancelled'].includes(t.status)) {
+      this.removeTask(id);
+      return;
+    }
+    t.cancelled = true;
+    t.paused = false;
+    this.render();
+  }
+  removeTask(id) {
+    this.tasks = this.tasks.filter(t => t.id !== id);
+    this.render();
+    if (this.tasks.length === 0) this.panel.classList.remove('show');
+    this._adjustShift();
+  }
+  clearCompleted() {
+    const before = this.tasks.length;
+    this.tasks = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status));
+    const removed = before - this.tasks.length;
+    this.render();
+    if (this.tasks.length === 0) this.panel.classList.remove('show');
+    if (removed > 0) showToast(`已清理 ${removed} 条上传记录`);
+    this._adjustShift();
+  }
+  togglePanel() { this.panel.classList.toggle('show'); this._adjustShift(); }
+  _adjustShift() {
+    const both = document.getElementById('download-panel').classList.contains('show')
+              && document.getElementById('upload-panel').classList.contains('show');
+    document.getElementById('download-panel').classList.toggle('shift', both);
+    document.getElementById('upload-panel').classList.toggle('shift', both);
+  }
+  updateBadge(badgeEl) {
+    if (!badgeEl) return;
+    const active = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)).length;
+    if (active > 0) { badgeEl.textContent = active; badgeEl.classList.add('show'); }
+    else { badgeEl.classList.remove('show'); }
+  }
+  render() {
+    if (this.badge) this.updateBadge(this.badge);
+    if (this.tasks.length === 0) {
+      this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无上传任务</div>`;
+      return;
+    }
+    this.list.innerHTML = this.tasks.map(t => {
+      let statusText = '', statusClass = '';
+      const isActive = ['uploading', 'finalizing'].includes(t.status);
+      switch (t.status) {
+        case 'hashing': statusText = `哈希中 ${Math.floor(t.hashProgress)}%`; statusClass = 'warn'; break;
+        case 'uploading': statusText = Math.floor(t.progress) + '%'; break;
+        case 'finalizing': statusText = '合并中...'; break;
+        case 'paused': statusText = '已暂停'; statusClass = 'warn'; break;
+        case 'cancelled': statusText = '已取消'; statusClass = 'err'; break;
+        case 'completed': statusText = '已完成'; statusClass = 'ok'; break;
+        case 'error': statusText = '失败'; statusClass = 'err'; break;
+      }
+      const barColor = t.status === 'error' ? 'background:#E5484D;'
+                     : t.status === 'completed' ? 'background:#2f9e44;'
+                     : t.status === 'hashing' ? 'background:#f08c00;'
+                     : t.status === 'paused' ? 'background:#f08c00;' : '';
+      const canPause = isActive || t.status === 'hashing';
+      const canResume = t.status === 'paused';
+      const canCancel = canPause || canResume;
+      const canRemove = !canPause && !canResume;
+
+      let actions = '';
+      if (canPause) actions += `<button class="task-btn" data-act="pause" data-id="${t.id}" title="暂停">❚❚</button>`;
+      if (canResume) actions += `<button class="task-btn" data-act="resume" data-id="${t.id}" title="继续">▶</button>`;
+      if (canCancel) actions += `<button class="task-btn danger" data-act="cancel" data-id="${t.id}" title="取消">✖</button>`;
+      if (canRemove) actions += `<button class="task-btn" data-act="remove" data-id="${t.id}" title="移除">✖</button>`;
+
+      const metaLine = `<div class="task-meta">${formatBytes(t.size)} → ${t.parentPath}</div>`;
+
+      return `<div class="task-item">
+        <div class="task-item-header">
+          <span class="task-item-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+          <span class="task-item-status ${statusClass}">${statusText}</span>
+          <span class="task-item-actions">${actions}</span>
+        </div>
+        <div class="task-progress"><div class="task-progress-bar ${t.status === 'hashing' ? 'hash' : ''}" style="width: ${t.status === 'hashing' ? t.hashProgress : t.progress}%; ${barColor}"></div></div>
+        ${metaLine}
+      </div>`;
+    }).join('');
+  }
+}
+const uploadManager = new UploadManager();
+
+// ===================== 自定义元素 =====================
 class CollapsibleItem extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
   connectedCallback() { this.render(); }
@@ -313,7 +729,6 @@ class CollapsibleItem extends HTMLElement {
 customElements.define("collapsible-tree", class extends HTMLElement { constructor(){super();this.attachShadow({mode:"open"});this.shadowRoot.innerHTML=`<style>:host{display:block}</style><slot></slot>`;} });
 customElements.define("collapsible-item", CollapsibleItem);
 
-// ============ v7 修改 1：新增"传输"分组 + 下载按钮 ============
 class FMRibbon extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this.collapsed = false; }
   connectedCallback() {
@@ -327,6 +742,7 @@ class FMRibbon extends HTMLElement {
         </div><div class="group-title">剪贴板</div></div>
         <div class="group"><div class="actions">
           <button data-action="download" title="下载选中项"><div class="ico">${getSvg('download', '#0090ff')}</div>下载</button>
+          <button data-action="upload" title="选择文件上传"><div class="ico">${getSvg('upload', '#0090ff')}</div>上传</button>
         </div><div class="group-title">传输</div></div>
         <div class="group"><div class="actions">
           <button data-action="delete" style="color:#E5484D"><div class="ico">${getSvg('delete', '#E5484D')}</div>删除</button>
@@ -623,7 +1039,6 @@ class FMMainView extends HTMLElement {
 }
 customElements.define("fm-main-view", FMMainView);
 
-// ============ v7 修改 2 & 3：目录/文件右键菜单都补上"下载"，文案改为"下载" ============
 class FMContextMenu extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
   connectedCallback() {
@@ -644,13 +1059,11 @@ class FMContextMenu extends HTMLElement {
     } else if (contextType === 'trash-empty') {
       html += `<div class="menu-item" data-action="empty-trash" style="color:#E5484D">清空回收站</div><div class="divider"></div><div class="menu-item" data-action="refresh">刷新</div>`;
     } else if (contextType === 'folder') {
-      // v7: 目录菜单补上"下载"
-      html += `<div class="menu-item" data-action="open" style="font-weight:bold">打开</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`;
+      html += `<div class="menu-item" data-action="open" style="font-weight:bold">打开</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载 (打包 zip)</div><div class="menu-item" data-action="properties">属性</div>`;
     } else if (contextType === 'file') {
-      // v7: 文件菜单"下载 (分片+SHA256)" → "下载"
       html += `<div class="menu-item" data-action="view-file" style="font-weight:bold">查看</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`;
     } else {
-      html += `<div class="menu-item has-submenu">查看<div class="submenu"><div class="menu-item" data-action="viewToggle">切换网格/列表</div></div></div><div class="menu-item has-submenu">排列方式<div class="submenu"><div class="menu-item" data-action="sort-name">按名称</div><div class="menu-item" data-action="sort-date">按日期</div><div class="menu-item" data-action="sort-size">按大小</div></div></div><div class="menu-item" data-action="refresh">刷新</div><div class="divider"></div><div class="menu-item" data-action="paste">粘贴</div><div class="menu-item" data-action="undo">撤销</div><div class="menu-item" data-action="selectall">全选</div><div class="divider"></div><div class="menu-item has-submenu">新建<div class="submenu"><div class="menu-item" data-action="newfolder">📁 文件夹</div><div class="divider"></div><div class="menu-item" data-action="newfile-txt">📝 文本文档 (.txt)</div><div class="menu-item" data-action="newfile-md">📝 Markdown (.md)</div><div class="menu-item" data-action="newfile-js">⚙️ JS 脚本 (.js)</div></div></div>`;
+      html += `<div class="menu-item has-submenu">查看<div class="submenu"><div class="menu-item" data-action="viewToggle">切换网格/列表</div></div></div><div class="menu-item has-submenu">排列方式<div class="submenu"><div class="menu-item" data-action="sort-name">按名称</div><div class="menu-item" data-action="sort-date">按日期</div><div class="menu-item" data-action="sort-size">按大小</div></div></div><div class="menu-item" data-action="refresh">刷新</div><div class="divider"></div><div class="menu-item" data-action="upload">上传文件到此处</div><div class="menu-item" data-action="paste">粘贴</div><div class="menu-item" data-action="undo">撤销</div><div class="menu-item" data-action="selectall">全选</div><div class="divider"></div><div class="menu-item has-submenu">新建<div class="submenu"><div class="menu-item" data-action="newfolder">📁 文件夹</div><div class="divider"></div><div class="menu-item" data-action="newfile-txt">📝 文本文档 (.txt)</div><div class="menu-item" data-action="newfile-md">📝 Markdown (.md)</div><div class="menu-item" data-action="newfile-js">⚙️ JS 脚本 (.js)</div></div></div>`;
     }
     const container = this.shadowRoot.getElementById('container'); container.innerHTML = html;
     this.classList.add('show'); 
@@ -707,6 +1120,10 @@ class WinFileExplorer extends HTMLElement {
         .quick-badge.show { display: inline-block; }
         .quick-badge.danger { background: #E5484D; }
         .main-content { flex: 1; display: flex; flex-direction: column; position: relative; min-width: 0; }
+        .drop-overlay { position: absolute; inset: 0; background: rgba(0,144,255,0.08); border: 3px dashed var(--blue-9); border-radius: 8px; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 16px; z-index: 200; pointer-events: none; }
+        .drop-overlay.active { display: flex; }
+        .drop-overlay .icon { width: 80px; height: 80px; }
+        .drop-overlay .text { font-size: 16px; color: var(--blue-11); font-weight: 600; }
         @media (max-width: 768px) { .sidebar { display: none; } }
       </style>
       <fm-ribbon id="ribbon"></fm-ribbon>
@@ -722,6 +1139,11 @@ class WinFileExplorer extends HTMLElement {
               <span class="quick-label">下载</span>
               <span class="quick-badge" id="download-badge"></span>
             </div>
+            <div class="quick-item" id="btn-show-uploads" title="打开上传列表">
+              <span class="quick-icon">${getSvg('upload', '#0090ff')}</span>
+              <span class="quick-label">上传</span>
+              <span class="quick-badge" id="upload-badge"></span>
+            </div>
             <div class="quick-item" id="btn-show-trash" title="打开回收站">
               <span class="quick-icon">${getSvg('trash', '#8f8f8f')}</span>
               <span class="quick-label">回收站</span>
@@ -729,10 +1151,18 @@ class WinFileExplorer extends HTMLElement {
             </div>
           </div>
         </div>
-        <div class="main-content"><fm-main-view id="mainview"></fm-main-view></div>
+        <div class="main-content" id="main-content">
+          <fm-main-view id="mainview"></fm-main-view>
+          <div class="drop-overlay" id="drop-overlay">
+            <div class="icon">${getSvg('upload', '#0090ff')}</div>
+            <div class="text" id="drop-text">松开以上传文件到当前目录</div>
+          </div>
+        </div>
       </div>
       <fm-statusbar id="statusbar"></fm-statusbar>
-      <fm-context-menu id="contextmenu"></fm-context-menu>`;
+      <fm-context-menu id="contextmenu"></fm-context-menu>
+      <input type="file" id="hidden-file-input" multiple style="display:none">
+      `;
     this.mainview = this.shadowRoot.getElementById('mainview'); 
     this.addressbar = this.shadowRoot.getElementById('addressbar'); 
     this.realTree = this.shadowRoot.getElementById('realTree'); 
@@ -741,10 +1171,21 @@ class WinFileExplorer extends HTMLElement {
     this.ribbon = this.shadowRoot.getElementById('ribbon');
     this.trashBadge = this.shadowRoot.getElementById('trash-badge');
     this.trashBtn = this.shadowRoot.getElementById('btn-show-trash');
+    this.downloadBadge = this.shadowRoot.getElementById('download-badge');
+    this.uploadBadge = this.shadowRoot.getElementById('upload-badge');
+    this.mainContentEl = this.shadowRoot.getElementById('main-content');
+    this.dropOverlay = this.shadowRoot.getElementById('drop-overlay');
+    this.dropText = this.shadowRoot.getElementById('drop-text');
+    this.hiddenFileInput = this.shadowRoot.getElementById('hidden-file-input');
+
+    // 绑定 badge
+    downloadManager.badge = this.downloadBadge;
+    uploadManager.badge = this.uploadBadge;
 
     this.statusbar.update(0, 0);
 
-    this.shadowRoot.getElementById('btn-show-downloads').addEventListener('click', () => downloadManager.togglePanel());
+    this.shadowRoot.getElementById('btn-show-downloads').addEventListener('click', () => { downloadManager.togglePanel(); });
+    this.shadowRoot.getElementById('btn-show-uploads').addEventListener('click', () => { uploadManager.togglePanel(); });
     this.trashBtn.addEventListener('click', () => this.loadTrash());
 
     this.addEventListener('navigate', (e) => this.navigate(e.detail)); 
@@ -772,6 +1213,26 @@ class WinFileExplorer extends HTMLElement {
       } catch(err) {}
     });
 
+    // 上传完成事件 → 刷新当前目录
+    window.addEventListener('upload-complete', (e) => {
+      if (e.detail.parentPath === this.currentPath) {
+        this.loadPath(this.currentPath, true);
+      }
+    });
+
+    // 隐藏的 file input
+    this.hiddenFileInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length > 0) {
+        if (this.currentPath === '') return showToast("请进入具体目录后再上传", true);
+        files.forEach(f => uploadManager.add(f, this.currentPath));
+      }
+      e.target.value = '';
+    });
+
+    // 拖拽上传
+    this._setupDragUpload();
+
     document.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.altKey) { 
@@ -792,6 +1253,7 @@ class WinFileExplorer extends HTMLElement {
             case 'v': e.preventDefault(); this.handleAction('paste'); break;
             case 'z': e.preventDefault(); this.handleAction('undo'); break;
             case 'j': e.preventDefault(); downloadManager.togglePanel(); break;
+            case 'u': e.preventDefault(); uploadManager.togglePanel(); break;
             case 'n': e.preventDefault(); this.handleAction('newfolder'); break; 
           } 
         } 
@@ -814,6 +1276,44 @@ class WinFileExplorer extends HTMLElement {
     const initialPath = this.storageMode === 'disk' ? '' : 'C:';
     this.navigate(initialPath);
     this.refreshTrashBadge();
+  }
+
+  // 拖拽上传
+  _setupDragUpload() {
+    const mc = this.mainContentEl;
+    let dragCounter = 0;
+    mc.addEventListener('dragenter', (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault();
+      dragCounter++;
+      if (this.currentPath === '') {
+        this.dropText.textContent = '请先进入一个目录再拖拽上传';
+      } else {
+        this.dropText.textContent = `松开以上传文件到: ${this.currentPath}`;
+      }
+      this.dropOverlay.classList.add('active');
+    });
+    mc.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    mc.addEventListener('dragleave', (e) => {
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        this.dropOverlay.classList.remove('active');
+      }
+    });
+    mc.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      this.dropOverlay.classList.remove('active');
+      const files = Array.from(e.dataTransfer?.files || []);
+      if (files.length === 0) return;
+      if (this.currentPath === '') return showToast("请进入具体目录后再上传", true);
+      files.forEach(f => uploadManager.add(f, this.currentPath));
+    });
   }
 
   async refreshTrashBadge() {
@@ -951,16 +1451,54 @@ class WinFileExplorer extends HTMLElement {
     } catch (e) { this.mainview.showSkeleton(false); }
   }
 
-  showPreview(path) {
-     const ext = path.split('.').pop().toLowerCase(), name = path.split('/').pop();
-     document.getElementById('preview-title').innerText = name + ' - 预览器';
-     const body = document.getElementById('preview-body');
-     if(['png','jpg','jpeg','gif'].includes(ext)) { 
-       body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;"><div class="ico" style="width:120px;height:120px">${getSvg('image', '#0090ff')}</div><p style="color:var(--slate-8); margin-top:20px;">[内置图形引擎]</p></div>`; 
-     } else { 
-       body.innerHTML = `<textarea style="flex:1; border:none; padding:20px; resize:none; font-family: 'Consolas', monospace; font-size:14px; background:var(--slate-1); color:var(--slate-11); outline:none;" readonly>/**\n * 文件: ${name}\n * 路径: ${path}\n */\n\nconsole.log("Hello, Windows File Explorer Ultimate!");</textarea>`; 
-     }
-     document.getElementById('preview-modal').classList.add('active');
+  // ============ v8: 真实预览 ============
+  async showPreview(path) {
+    const ext = path.split('.').pop().toLowerCase();
+    const name = path.split('/').pop();
+    const body = document.getElementById('preview-body');
+    document.getElementById('preview-title').innerText = name + ' - 预览';
+    document.getElementById('preview-modal').classList.add('active');
+
+    const imgExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'];
+    const videoExts = ['mp4', 'webm', 'mov', 'mkv', 'ogv'];
+    const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac'];
+    const textExts = ['txt', 'md', 'log', 'json', 'xml', 'html', 'htm',
+        'js', 'css', 'go', 'py', 'java', 'c', 'cpp', 'h', 'ts', 'tsx', 'jsx',
+        'yml', 'yaml', 'toml', 'ini', 'conf', 'sh', 'bat', 'ps1', 'env', 'mod', 'sum'];
+
+    const url = API.previewUrl(path);
+
+    if (imgExts.includes(ext)) {
+      body.innerHTML = `<div style="flex:1; display:flex; align-items:center; justify-content:center; background:#1a1a1a; overflow:auto; min-height:0;">
+        <img src="${url}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="${escapeHtml(name)}">
+      </div>`;
+    } else if (videoExts.includes(ext)) {
+      body.innerHTML = `<div style="flex:1; display:flex; align-items:center; justify-content:center; background:#000; min-height:0;">
+        <video src="${url}" controls preload="metadata" style="max-width:100%; max-height:100%;"></video>
+      </div>`;
+    } else if (audioExts.includes(ext)) {
+      body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px; gap:20px;">
+        <div style="width:100px; height:100px;">${getSvg('image', '#0090ff')}</div>
+        <div style="font-size:14px; color:var(--slate-9);">${escapeHtml(name)}</div>
+        <audio src="${url}" controls preload="metadata" style="width:100%; max-width:500px;"></audio>
+      </div>`;
+    } else if (textExts.includes(ext)) {
+      body.innerHTML = `<div style="flex:1; display:flex; align-items:center; justify-content:center; color: var(--slate-8);">加载中...</div>`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        body.innerHTML = `<pre style="flex:1; margin:0; padding:20px; font-family: 'Consolas','Monaco',monospace; font-size:13px; line-height:1.6; background: var(--slate-1); overflow:auto; white-space: pre-wrap; word-break: break-all; min-height:0; color: var(--slate-11);">${escapeHtml(text)}</pre>`;
+      } catch (e) {
+        body.innerHTML = `<div style="padding:20px; color:#E5484D; font-family: monospace;">加载失败: ${escapeHtml(e.message)}</div>`;
+      }
+    } else {
+      body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color: var(--slate-8); gap:16px;">
+        <div style="width:80px; height:80px;">${getSvg('file', '#8f8f8f')}</div>
+        <div>暂不支持预览此类型</div>
+        <div style="font-size:12px;">${escapeHtml(name)}</div>
+      </div>`;
+    }
   }
 
   async handleAction(action) {
@@ -1098,29 +1636,32 @@ class WinFileExplorer extends HTMLElement {
          document.getElementById('prop-body').innerHTML = `<div class="prop-row"><span>类型：</span><span>${prop.type === 'folder' ? '文件夹' : '文件'}</span></div><div class="prop-row"><span>位置：</span><span style="word-break:break-all">${selected[0]}</span></div><div class="prop-row"><span>大小：</span><span>${formatBytes(prop.size)}</span></div><div class="prop-row"><span>创建时间：</span><span>${prop.created}</span></div><div class="prop-row"><span>修改时间：</span><span>${prop.modified}</span></div>${extra}`;
          document.getElementById('prop-modal').classList.add('active');
       }
-      // ============ v7 修改 4：优化下载提示 ============
+      // v8: 下载 —— 文件直接下；文件夹打包 zip；混合一起 zip
       else if (action === 'download') {
          if (inTrash) return showToast("回收站中的项无法下载", true);
          if (!selected.length) return showToast("请先选择要下载的项目", true);
-         // 分离文件与文件夹
-         const files = selected.filter(p => {
-           const item = this.mainview.items.find(i => i.path === p);
-           return item && item.type === 'file';
-         });
-         const folders = selected.filter(p => {
+
+         // 检查是否包含目录
+         const hasFolder = selected.some(p => {
            const item = this.mainview.items.find(i => i.path === p);
            return item && item.type === 'folder';
          });
-         if (files.length > 0) {
-           files.forEach(p => downloadManager.add(p));
+
+         if (!hasFolder) {
+           // 全是文件：逐个下载
+           selected.forEach(p => downloadManager.addFile(p));
+           showToast(`已添加 ${selected.length} 个下载任务`);
+         } else {
+           // 有目录：打包 zip
+           await downloadManager.addZip(selected);
+           showToast(`已添加打包下载任务（${selected.length} 项）`);
          }
-         if (files.length > 0 && folders.length > 0) {
-           showToast(`已添加 ${files.length} 个文件下载任务（${folders.length} 个文件夹已跳过）`);
-         } else if (files.length > 0) {
-           showToast(`已添加 ${files.length} 个下载任务`);
-         } else if (folders.length > 0) {
-           showToast("文件夹下载暂未支持，请选择文件", true);
-         }
+      }
+      // v8: 上传按钮 —— 打开文件选择器
+      else if (action === 'upload') {
+        if (inTrash) return showToast("回收站中无法上传", true);
+        if (this.currentPath === '') return showToast("请进入具体目录后再上传", true);
+        this.hiddenFileInput.click();
       }
     } catch(e) {}
   }
