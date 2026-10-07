@@ -1214,21 +1214,92 @@ func handleProperties(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, node)
 }
 
-// ============ v14: 直连下载（浏览器原生） ============
+// ============ v15.1: 直连下载（浏览器原生 + 目录实时 zip 流式，已提速） ============
 
-// GET /api/download?path=xxx —— 直接返回完整文件流
+// flushWriter 包装：每次写入后 flush，让浏览器尽早收到首字节
+type flushWriter struct {
+	w io.Writer
+	f http.Flusher
+}
+
+func (fw *flushWriter) Write(p []byte) (int, error) {
+	n, err := fw.w.Write(p)
+	if err == nil && fw.f != nil {
+		fw.f.Flush()
+	}
+	return n, err
+}
+
+// writeZipEntry 写一个 zip 条目（使用 Store，不压缩，吞吐最大化）
+// 关键点：
+//  1. Method: zip.Store 而非默认 Deflate，避免单线程 CPU 压缩瓶颈
+//  2. 显式 src.Close()，不用 defer（defer 在 Walk 闭包里会攒到最后才执行）
+func writeZipEntry(zw *zip.Writer, name string, srcPath string, fi os.FileInfo) error {
+	fh := &zip.FileHeader{
+		Name:   name,
+		Method: zip.Store,
+	}
+	if fi != nil {
+		fh.SetMode(fi.Mode())
+		fh.Modified = fi.ModTime()
+	}
+	fw, err := zw.CreateHeader(fh)
+	if err != nil {
+		return err
+	}
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(fw, src)
+	src.Close()
+	return copyErr
+}
+
+// streamZipWalk 递归打包目录内容到 zip writer
+func streamZipWalk(zw *zip.Writer, absPath string, rootDir string) {
+	filepath.Walk(absPath, func(p string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(rootDir, p)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		_ = writeZipEntry(zw, rel, p, fi)
+		return nil
+	})
+}
+
+// GET /api/download?path=A&path=B
+// 单文件 → 直接 io.Copy 流式（Linux 下走 sendfile 零拷贝）
+// 单目录 / 多选 → 实时打包为 zip，边打边推
 func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Query().Get("path")
-	if path == "" {
+	rawPaths := r.URL.Query()["path"]
+	cleanPaths := make([]string, 0, len(rawPaths))
+	for _, p := range rawPaths {
+		if p != "" {
+			cleanPaths = append(cleanPaths, p)
+		}
+	}
+	if len(cleanPaths) == 0 {
 		writeError(w, 400, "缺少 path 参数")
 		return
 	}
+
+	// ---- VFS 模式：只支持单文件，返回生成数据 ----
 	if STORAGE_MODE == ModeVFS {
+		if len(cleanPaths) != 1 {
+			writeError(w, 400, "VFS 模式暂不支持多选下载")
+			return
+		}
+		path := cleanPaths[0]
 		FS.mu.RLock()
 		node, ok := FS.data[path]
 		FS.mu.RUnlock()
 		if !ok || node.Type != "file" {
-			writeError(w, 404, "文件不存在")
+			writeError(w, 404, "文件不存在或不是文件")
 			return
 		}
 		size := node.Size
@@ -1241,65 +1312,85 @@ func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, node.Name))
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-		chunk := make([]byte, 32*1024)
+		chunk := make([]byte, 256*1024)
 		for i := range chunk {
 			chunk[i] = byte('A' + (i % 26))
 		}
 		remaining := size
 		for remaining > 0 {
-			n := int64(len(chunk))
-			if n > remaining {
-				n = remaining
+			writeSize := int64(len(chunk))
+			if writeSize > remaining {
+				writeSize = remaining
 			}
-			if _, err := w.Write(chunk[:int(n)]); err != nil {
+			if _, err := w.Write(chunk[:int(writeSize)]); err != nil {
 				return
 			}
-			remaining -= n
+			remaining -= writeSize
 		}
 		return
 	}
-	absPath := toOSPath(path)
-	info, err := os.Stat(absPath)
-	if err != nil || info.IsDir() {
-		writeError(w, 404, "文件不存在")
-		return
-	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, info.Name()))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
-	f, err := os.Open(absPath)
-	if err != nil {
-		writeError(w, 500, err.Error())
-		return
-	}
-	defer f.Close()
-	_, _ = io.Copy(w, f)
-}
 
-// GET /api/download/zip/file?token=xxx —— 直接返回完整 zip 流
-func handleZipFileDownload(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		writeError(w, 400, "缺少 token 参数")
+	// ---- 磁盘模式 ----
+	type itemInfo struct {
+		absPath string
+		info    os.FileInfo
+	}
+	items := make([]itemInfo, 0, len(cleanPaths))
+	for _, p := range cleanPaths {
+		absPath := toOSPath(p)
+		info, err := os.Stat(absPath)
+		if err != nil {
+			writeError(w, 404, "文件不存在: "+p)
+			return
+		}
+		items = append(items, itemInfo{absPath, info})
+	}
+
+	// 单文件：直接流式（io.Copy 在 Linux 上自动走 sendfile 零拷贝）
+	if len(items) == 1 && !items[0].info.IsDir() {
+		info := items[0].info
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, info.Name()))
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
+		f, err := os.Open(items[0].absPath)
+		if err != nil {
+			writeError(w, 500, err.Error())
+			return
+		}
+		defer f.Close()
+		_, _ = io.Copy(w, f)
 		return
 	}
-	zipMu.Lock()
-	task, ok := zipTasks[token]
-	zipMu.Unlock()
-	if !ok {
-		writeError(w, 404, "zip 任务不存在或已过期")
-		return
+
+	// 单目录 或 多选：边打包 zip 边推流给浏览器
+	var zipName string
+	if len(items) == 1 {
+		zipName = items[0].info.Name() + ".zip"
+	} else {
+		zipName = "archive.zip"
 	}
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, task.Name))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", task.Size))
-	f, err := os.Open(task.TempPath)
-	if err != nil {
-		writeError(w, 404, "zip 文件已丢失")
-		return
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, zipName))
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Accel-Buffering", "no") // 提示 nginx 等反代不要整段缓冲
+
+	// 通过 flushWriter 让数据边生成边下发
+	var zw *zip.Writer
+	if flusher, ok := w.(http.Flusher); ok {
+		zw = zip.NewWriter(&flushWriter{w: w, f: flusher})
+	} else {
+		zw = zip.NewWriter(w)
 	}
-	defer f.Close()
-	_, _ = io.Copy(w, f)
+	defer zw.Close()
+
+	for _, it := range items {
+		if it.info.IsDir() {
+			rootDir := filepath.Dir(it.absPath)
+			streamZipWalk(zw, it.absPath, rootDir)
+		} else {
+			_ = writeZipEntry(zw, it.info.Name(), it.absPath, it.info)
+		}
+	}
 }
 
 // 保留 meta / chunk 接口（向后兼容）
@@ -1420,7 +1511,7 @@ func handleDownloadChunk(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.CopyN(w, f, n)
 }
 
-// ============ zip 打包 ============
+// ============ zip 打包（保留原有基于 token 的两段式接口） ============
 func handleZipPrepare(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Paths []string `json:"paths"`
@@ -1460,38 +1551,9 @@ func handleZipPrepare(w http.ResponseWriter, r *http.Request) {
 		}
 		if info.IsDir() {
 			rootDir := filepath.Dir(absPath)
-			filepath.Walk(absPath, func(path string, fi os.FileInfo, err error) error {
-				if err != nil || fi.IsDir() {
-					return nil
-				}
-				rel, err := filepath.Rel(rootDir, path)
-				if err != nil {
-					return nil
-				}
-				rel = filepath.ToSlash(rel)
-				fw, err := zw.Create(rel)
-				if err != nil {
-					return nil
-				}
-				src, err := os.Open(path)
-				if err != nil {
-					return nil
-				}
-				io.Copy(fw, src)
-				src.Close()
-				return nil
-			})
+			streamZipWalk(zw, absPath, rootDir)
 		} else {
-			fw, err := zw.Create(info.Name())
-			if err != nil {
-				continue
-			}
-			src, err := os.Open(absPath)
-			if err != nil {
-				continue
-			}
-			io.Copy(fw, src)
-			src.Close()
+			_ = writeZipEntry(zw, info.Name(), absPath, info)
 		}
 	}
 	zw.Close()
@@ -1562,6 +1624,30 @@ func handleZipCleanup(w http.ResponseWriter, r *http.Request) {
 	}
 	zipMu.Unlock()
 	writeJSON(w, 200, map[string]string{"status": "ok"})
+}
+func handleZipFileDownloadLegacy(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		writeError(w, 400, "缺少 token 参数")
+		return
+	}
+	zipMu.Lock()
+	task, ok := zipTasks[token]
+	zipMu.Unlock()
+	if !ok {
+		writeError(w, 404, "zip 任务不存在或已过期")
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, task.Name))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", task.Size))
+	f, err := os.Open(task.TempPath)
+	if err != nil {
+		writeError(w, 404, "zip 文件已丢失")
+		return
+	}
+	defer f.Close()
+	_, _ = io.Copy(w, f)
 }
 func cleanupZipTasks() {
 	for {
@@ -1843,14 +1929,14 @@ func main() {
 	mux.HandleFunc("/api/items/copy", handleCopy)
 	mux.HandleFunc("/api/items/undo", handleUndo)
 	mux.HandleFunc("/api/properties", handleProperties)
-	// 下载相关
+	// 下载相关：直连下载（单文件流式 / 目录多选实时 zip 流式）
+	mux.HandleFunc("/api/download", handleDownloadFile)
 	mux.HandleFunc("/api/download/meta", handleDownloadMeta)
 	mux.HandleFunc("/api/download/chunk", handleDownloadChunk)
-	mux.HandleFunc("/api/download/zip/file", handleZipFileDownload)
+	mux.HandleFunc("/api/download/zip/file", handleZipFileDownloadLegacy)
 	mux.HandleFunc("/api/download/zip/prepare", handleZipPrepare)
 	mux.HandleFunc("/api/download/zip/chunk", handleZipChunk)
 	mux.HandleFunc("/api/download/zip/cleanup", handleZipCleanup)
-	mux.HandleFunc("/api/download", handleDownloadFile) // 精确匹配
 	// 上传
 	mux.HandleFunc("/api/upload/init", handleUploadInit)
 	mux.HandleFunc("/api/upload/chunk", handleUploadChunk)
