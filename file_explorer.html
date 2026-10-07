@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Windows File Explorer - The Flawless Edition v6</title>
+  <title>Windows File Explorer - The Flawless Edition v7</title>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
   <style>
     :root {
@@ -280,7 +280,6 @@ class CollapsibleItem extends HTMLElement {
   attributeChangedCallback(name, oldVal, newVal) { if (oldVal !== newVal) this.render(); }
   render() {
     const label = this.getAttribute("label") || "Item", isOpen = this.hasAttribute("open") ? "checked" : "", id = "tog_" + Math.random().toString(36).substr(2, 9);
-    const isLeaf = this.hasAttribute('leaf');
     const folderIcon = getSvg('folder', '#0090ff');
     this.shadowRoot.innerHTML = `
       <style>:host { display: block; --hover-bg: var(--slate-4); outline: none; } .toggle { display: none; } 
@@ -314,6 +313,7 @@ class CollapsibleItem extends HTMLElement {
 customElements.define("collapsible-tree", class extends HTMLElement { constructor(){super();this.attachShadow({mode:"open"});this.shadowRoot.innerHTML=`<style>:host{display:block}</style><slot></slot>`;} });
 customElements.define("collapsible-item", CollapsibleItem);
 
+// ============ v7 修改 1：新增"传输"分组 + 下载按钮 ============
 class FMRibbon extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this.collapsed = false; }
   connectedCallback() {
@@ -325,6 +325,9 @@ class FMRibbon extends HTMLElement {
           <div class="col"><button class="small" data-action="copy"><div class="ico">${getSvg('copy', '#8f8f8f')}</div>复制</button><button class="small" data-action="paste"><div class="ico">${getSvg('paste', '#8f8f8f')}</div>粘贴</button></div>
           <div class="col"><button class="small" data-action="cut"><div class="ico">${getSvg('cut', '#8f8f8f')}</div>剪切</button><button class="small" data-action="undo"><div class="ico">${getSvg('undo', '#8f8f8f')}</div>撤销</button></div>
         </div><div class="group-title">剪贴板</div></div>
+        <div class="group"><div class="actions">
+          <button data-action="download" title="下载选中项"><div class="ico">${getSvg('download', '#0090ff')}</div>下载</button>
+        </div><div class="group-title">传输</div></div>
         <div class="group"><div class="actions">
           <button data-action="delete" style="color:#E5484D"><div class="ico">${getSvg('delete', '#E5484D')}</div>删除</button>
           <button data-action="rename"><div class="ico">${getSvg('rename', '#8f8f8f')}</div>重命名</button>
@@ -620,6 +623,7 @@ class FMMainView extends HTMLElement {
 }
 customElements.define("fm-main-view", FMMainView);
 
+// ============ v7 修改 2 & 3：目录/文件右键菜单都补上"下载"，文案改为"下载" ============
 class FMContextMenu extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
   connectedCallback() {
@@ -640,9 +644,11 @@ class FMContextMenu extends HTMLElement {
     } else if (contextType === 'trash-empty') {
       html += `<div class="menu-item" data-action="empty-trash" style="color:#E5484D">清空回收站</div><div class="divider"></div><div class="menu-item" data-action="refresh">刷新</div>`;
     } else if (contextType === 'folder') {
-      html += `<div class="menu-item" data-action="open" style="font-weight:bold">打开</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="properties">属性</div>`;
+      // v7: 目录菜单补上"下载"
+      html += `<div class="menu-item" data-action="open" style="font-weight:bold">打开</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`;
     } else if (contextType === 'file') {
-      html += `<div class="menu-item" data-action="view-file" style="font-weight:bold">查看</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载 (分片+SHA256)</div><div class="menu-item" data-action="properties">属性</div>`;
+      // v7: 文件菜单"下载 (分片+SHA256)" → "下载"
+      html += `<div class="menu-item" data-action="view-file" style="font-weight:bold">查看</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`;
     } else {
       html += `<div class="menu-item has-submenu">查看<div class="submenu"><div class="menu-item" data-action="viewToggle">切换网格/列表</div></div></div><div class="menu-item has-submenu">排列方式<div class="submenu"><div class="menu-item" data-action="sort-name">按名称</div><div class="menu-item" data-action="sort-date">按日期</div><div class="menu-item" data-action="sort-size">按大小</div></div></div><div class="menu-item" data-action="refresh">刷新</div><div class="divider"></div><div class="menu-item" data-action="paste">粘贴</div><div class="menu-item" data-action="undo">撤销</div><div class="menu-item" data-action="selectall">全选</div><div class="divider"></div><div class="menu-item has-submenu">新建<div class="submenu"><div class="menu-item" data-action="newfolder">📁 文件夹</div><div class="divider"></div><div class="menu-item" data-action="newfile-txt">📝 文本文档 (.txt)</div><div class="menu-item" data-action="newfile-md">📝 Markdown (.md)</div><div class="menu-item" data-action="newfile-js">⚙️ JS 脚本 (.js)</div></div></div>`;
     }
@@ -834,7 +840,6 @@ class WinFileExplorer extends HTMLElement {
     } catch (e) { this.mainview.showSkeleton(false); }
   }
 
-  // ============ v6 修改 1：磁盘模式支持树形展开 ============
   async rebuildTree() {
     const openPaths = new Set([...this.realTree.querySelectorAll('collapsible-item[open]')].map(el => el.getAttribute('path')));
     this.realTree.innerHTML = '';
@@ -849,7 +854,6 @@ class WinFileExplorer extends HTMLElement {
     this.realTree.appendChild(rootItem);
 
     const restore = async (node, path) => {
-      // 根节点总是展开；其他节点之前打开过才恢复
       if (path === rootPath || openPaths.has(path)) {
         await this.loadTreeFolders(path, node, false);
         node.setAttribute('open', '');
@@ -881,7 +885,6 @@ class WinFileExplorer extends HTMLElement {
     } catch(e) {}
   }
 
-  // ============ v6 修改 2：磁盘模式也支持自动展开同步 ============
   async syncTreeState(targetPath) {
     const ancestors = await API.getAncestors(targetPath);
     let currentContainer = this.realTree;
@@ -1095,16 +1098,29 @@ class WinFileExplorer extends HTMLElement {
          document.getElementById('prop-body').innerHTML = `<div class="prop-row"><span>类型：</span><span>${prop.type === 'folder' ? '文件夹' : '文件'}</span></div><div class="prop-row"><span>位置：</span><span style="word-break:break-all">${selected[0]}</span></div><div class="prop-row"><span>大小：</span><span>${formatBytes(prop.size)}</span></div><div class="prop-row"><span>创建时间：</span><span>${prop.created}</span></div><div class="prop-row"><span>修改时间：</span><span>${prop.modified}</span></div>${extra}`;
          document.getElementById('prop-modal').classList.add('active');
       }
+      // ============ v7 修改 4：优化下载提示 ============
       else if (action === 'download') {
          if (inTrash) return showToast("回收站中的项无法下载", true);
-         if(!selected.length) return showToast("请先选择要下载的项目", true);
+         if (!selected.length) return showToast("请先选择要下载的项目", true);
+         // 分离文件与文件夹
          const files = selected.filter(p => {
            const item = this.mainview.items.find(i => i.path === p);
            return item && item.type === 'file';
          });
-         if (!files.length) return showToast("请选择文件（文件夹暂不支持下载）", true);
-         files.forEach(p => downloadManager.add(p));
-         showToast(`已添加 ${files.length} 个下载任务（分片+SHA256 校验）`);
+         const folders = selected.filter(p => {
+           const item = this.mainview.items.find(i => i.path === p);
+           return item && item.type === 'folder';
+         });
+         if (files.length > 0) {
+           files.forEach(p => downloadManager.add(p));
+         }
+         if (files.length > 0 && folders.length > 0) {
+           showToast(`已添加 ${files.length} 个文件下载任务（${folders.length} 个文件夹已跳过）`);
+         } else if (files.length > 0) {
+           showToast(`已添加 ${files.length} 个下载任务`);
+         } else if (folders.length > 0) {
+           showToast("文件夹下载暂未支持，请选择文件", true);
+         }
       }
     } catch(e) {}
   }

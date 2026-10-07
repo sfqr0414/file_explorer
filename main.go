@@ -17,18 +17,15 @@ import (
 	"time"
 )
 
-// ================= 存储模式开关 =================
 const (
 	ModeVFS  = "vfs"
 	ModeDisk = "disk"
 )
 
-// 【开关】改这里即切换存储模式
 var STORAGE_MODE = ModeDisk
 
-const CHUNK_SIZE = 4 * 1024 * 1024 // 分片大小 4MB
+const CHUNK_SIZE = 4 * 1024 * 1024
 
-// ================= 通用模型 =================
 type Node struct {
 	Type     string   `json:"type"`
 	Name     string   `json:"name"`
@@ -45,7 +42,6 @@ type TrashMeta struct {
 	DeletedAt    string `json:"deletedAt"`
 }
 
-// ================= VFS =================
 const TRASH_ROOT = "$TRASH"
 
 type FileSystem struct {
@@ -60,11 +56,9 @@ var undoSnapshotVFS *struct {
 	trashMeta map[string]TrashMeta
 }
 
-// ================= 磁盘回收站 =================
 const DISK_TRASH_DIR = ".file_explorer_trash"
 var diskTrashMeta = map[string]TrashMeta{}
 
-// ================= 通用工具 =================
 func normalizePath(parts ...string) string {
 	p := strings.Join(parts, "/")
 	for strings.Contains(p, "//") {
@@ -99,7 +93,6 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// ================= VFS 工具 =================
 func vfsUniqueName(targetParent, baseName string) string {
 	finalName := baseName
 	counter := 1
@@ -164,7 +157,6 @@ func initVFS() {
 	fmt.Printf("[VFS] 初始化完成，共 %d 个节点\n", len(FS.data))
 }
 
-// ================= 磁盘工具 =================
 func toOSPath(p string) string {
 	if runtime.GOOS == "windows" {
 		if len(p) == 2 && p[1] == ':' {
@@ -260,8 +252,6 @@ func copyFileOrDir(src, dst string) error {
 	_, err = io.Copy(out, in)
 	return err
 }
-
-// ================= Handlers =================
 
 func handleMode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"mode": STORAGE_MODE})
@@ -1217,8 +1207,6 @@ func handleProperties(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, node)
 }
 
-// ================= 分片下载 =================
-
 func handleDownloadMeta(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 
@@ -1343,7 +1331,6 @@ func handleDownloadChunk(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.CopyN(w, f, n)
 }
 
-// ================= CORS + main =================
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
