@@ -2,9 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <!-- v1: 移除无效的 touch-action=manipulation 属性 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Windows File Explorer - The Flawless Edition v1</title>
+  <title>Windows File Explorer - The Flawless Edition v3</title>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
   <style>
     :root {
@@ -16,19 +15,15 @@
       --font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       --col-name: 50%; --col-date: 30%; --col-size: 20%;
     }
-    
     html, body { touch-action: manipulation; }
     body, html { margin: 0; padding: 0; height: 100vh; height: 100dvh; font-family: var(--font-family); background: var(--slate-2); color: var(--slate-11); overflow: hidden; user-select: none; -webkit-user-select: none; }
     ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--slate-6); border-radius: 4px; border: 2px solid var(--slate-1); } ::-webkit-scrollbar-thumb:hover { background: var(--slate-8); }
     :focus-visible { outline: 2px solid var(--blue-9); outline-offset: -2px; }
-    
     #toast-container { position: fixed; bottom: 40px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
     .toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 6px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s forwards; backdrop-filter: blur(10px); }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-    
     .drag-ghost { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 10000; opacity: 0.95; background: var(--slate-1); border: 1px solid var(--blue-9); box-shadow: 0 8px 24px rgba(0,90,255,0.25); padding: 8px 14px; border-radius: 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--blue-11); will-change: transform; }
     .drag-ghost .badge { background: var(--blue-9); color: white; border-radius: 10px; padding: 2px 6px; font-size: 11px; }
-
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.2); display: flex; justify-content: center; align-items: center; z-index: 5000; opacity: 0; visibility: hidden; transition: all 0.2s; backdrop-filter: blur(2px); }
     .modal-overlay.active { opacity: 1; visibility: visible; }
     .modal-box { background: white; border-radius: 8px; width: 360px; box-shadow: 0 12px 32px rgba(0,0,0,0.15); transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); display: flex; flex-direction: column; max-height: 80vh; }
@@ -38,16 +33,21 @@
     .modal-close { cursor: pointer; color: var(--slate-8); font-size: 16px; } .modal-close:hover { color: var(--slate-12); }
     .modal-body { padding: 16px; font-size: 13px; line-height: 1.8; color: var(--slate-12); overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
     .prop-row { display: flex; border-bottom: 1px dashed var(--slate-3); padding: 6px 0; } .prop-row span:first-child { width: 80px; color: var(--slate-8); }
-
-    /* 下载列表 UI 样式 */
-    .download-panel { position: fixed; right: 20px; bottom: 60px; width: 320px; background: white; border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 4000; display: flex; flex-direction: column; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s; backdrop-filter: blur(10px); }
+    .download-panel { position: fixed; right: 20px; bottom: 60px; width: 340px; background: white; border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 4000; display: flex; flex-direction: column; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s; backdrop-filter: blur(10px); }
     .download-panel.show { opacity: 1; visibility: visible; transform: translateY(0); }
     .download-header { padding: 10px 16px; border-bottom: 1px solid var(--slate-4); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; background: var(--slate-2); border-radius: 8px 8px 0 0; }
-    .download-body { padding: 8px; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .download-header-actions { display: flex; align-items: center; gap: 12px; }
+    .download-clear { cursor: pointer; color: var(--slate-8); font-size: 12px; font-weight: 500; }
+    .download-clear:hover { color: var(--blue-9); }
+    .download-body { padding: 8px; max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
     .download-item { font-size: 12px; padding: 8px; border: 1px solid var(--slate-3); border-radius: 6px; background: var(--slate-1); }
-    .download-item-header { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; }
+    .download-item:hover { border-color: var(--slate-5); }
+    .download-item-header { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; gap: 6px; }
     .download-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-weight: 500; color: var(--slate-12); }
-    .download-item-status { color: var(--slate-8); margin-left: 8px; flex-shrink: 0; }
+    .download-item-status { color: var(--slate-8); flex-shrink: 0; }
+    .download-item-remove { color: var(--slate-8); cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s; padding: 0 2px; flex-shrink: 0; font-size: 13px; line-height: 1; }
+    .download-item:hover .download-item-remove { opacity: 1; }
+    .download-item-remove:hover { color: #E5484D; }
     .download-progress { height: 4px; background: var(--slate-4); border-radius: 2px; overflow: hidden; }
     .download-progress-bar { height: 100%; background: var(--blue-9); width: 0%; transition: width 0.2s; }
   </style>
@@ -63,7 +63,10 @@
   <div class="download-panel" id="download-panel">
     <div class="download-header">
       <span>下载列表</span>
-      <span class="modal-close" onclick="document.getElementById('download-panel').classList.remove('show')">✖</span>
+      <div class="download-header-actions">
+        <span class="download-clear" id="download-clear">清空</span>
+        <span class="modal-close" id="download-panel-close">✖</span>
+      </div>
     </div>
     <div class="download-body" id="download-list"></div>
   </div>
@@ -85,7 +88,10 @@ const SVGS = {
   copy: '<path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>',
   cut: '<path d="M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z"/>',
   paste: '<path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/>',
-  undo: '<path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>'
+  undo: '<path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/>',
+  download: '<path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>',
+  restore: '<path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>',
+  trash: '<path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>'
 };
 const getSvg = (key, color='#8f8f8f') => `<svg viewBox="0 0 24 24" fill="${color}" style="width:100%;height:100%; display:block;">${SVGS[key]||SVGS.file}</svg>`;
 const getFileIconSvg = (name, type) => {
@@ -100,61 +106,42 @@ const getFileIconSvg = (name, type) => {
     default: return getSvg('file', '#8f8f8f'); 
   }
 };
-
 const normalizePath = (...parts) => parts.join('/').replace(/\/+/g, '/').replace(/\/$/, '');
 const isValidName = (name) => name && name.trim().length > 0 && !/[\\/:*?"<>|]/.test(name);
 const formatBytes = (bytes) => { if(!bytes || bytes===0) return '0 B'; const k=1024, dm=1, sizes=['B','KB','MB','GB'], i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(dm))+' '+sizes[i]; };
 const showToast = (msg, isError = false) => { const container = document.getElementById('toast-container'), toast = document.createElement('div'); toast.className = 'toast'; toast.style.backgroundColor = isError ? 'rgba(229,72,77,0.9)' : ''; toast.innerText = msg; container.appendChild(toast); setTimeout(() => { toast.style.opacity='0'; setTimeout(()=>toast.remove(),300); }, 2500); };
 
-// ============ axios 配置 ============
-// 如果从 file:// 打开 HTML，则自动指向 http://localhost:8080
-// 如果从 http://localhost:8080 打开，则使用相对路径
+// ============ axios ============
 const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8080' : '';
 axios.defaults.baseURL = API_BASE;
 axios.defaults.timeout = 60000;
+axios.interceptors.response.use(res => res, err => {
+  const msg = err.response?.data?.error || err.message || '网络错误';
+  showToast(msg, true);
+  return Promise.reject(err);
+});
 
-// 全局错误拦截器
-axios.interceptors.response.use(
-  res => res,
-  err => {
-    const msg = err.response?.data?.error || err.message || '网络错误';
-    showToast(msg, true);
-    return Promise.reject(err);
-  }
-);
+// ============ v3: 剪贴板 ============
+const clipboard = { mode: null, paths: [] };
 
-// ============ API 接口层 (axios) ============
+// ============ API ============
 const API = {
-  async getFolderContents(path) {
-    const res = await axios.get('/api/folders', { params: { path } });
-    return res.data;
-  },
-  async getAncestors(path) {
-    const res = await axios.get('/api/ancestors', { params: { path } });
-    return res.data;
-  },
-  async deleteItems(paths) {
-    await axios.delete('/api/items', { data: { paths } });
-  },
-  async createItem(parentPath, type, name) {
-    const res = await axios.post('/api/items', { parentPath, type, name });
-    return res.data.path;
-  },
-  async renameItem(oldPath, newName) {
-    const res = await axios.put('/api/items/rename', { oldPath, newName });
-    return res.data.path;
-  },
-  async moveItem(sources, targetFolder) {
-    await axios.put('/api/items/move', { sources, targetFolder });
-  },
-  async getProperties(path) {
-    const res = await axios.get('/api/properties', { params: { path } });
-    return res.data;
-  },
+  async getFolderContents(path) { const r = await axios.get('/api/folders', { params: { path } }); return r.data; },
+  async getAncestors(path) { const r = await axios.get('/api/ancestors', { params: { path } }); return r.data; },
+  async deleteItems(paths) { await axios.delete('/api/items', { data: { paths } }); },
+  async createItem(parentPath, type, name) { const r = await axios.post('/api/items', { parentPath, type, name }); return r.data.path; },
+  async renameItem(oldPath, newName) { const r = await axios.put('/api/items/rename', { oldPath, newName }); return r.data.path; },
+  async moveItem(sources, targetFolder) { await axios.put('/api/items/move', { sources, targetFolder }); },
+  async copyItems(sources, targetFolder) { await axios.post('/api/items/copy', { sources, targetFolder }); },
+  async undo() { await axios.post('/api/items/undo'); },
+  async getProperties(path) { const r = await axios.get('/api/properties', { params: { path } }); return r.data; },
+  async getTrashList() { const r = await axios.get('/api/trash'); return r.data; },
+  async restoreFromTrash(paths) { await axios.post('/api/trash/restore', { paths }); },
+  async purgeTrash(paths) { await axios.delete('/api/trash', { data: { paths } }); },
+  async clearTrash() { await axios.delete('/api/trash', { data: { all: true } }); },
   async downloadFile(path, onProgress) {
     const res = await axios.get('/api/download', {
-      params: { path },
-      responseType: 'blob',
+      params: { path }, responseType: 'blob',
       onDownloadProgress: (e) => {
         const total = e.total || 1;
         const percent = Math.min(100, Math.round((e.loaded * 100) / total));
@@ -178,47 +165,56 @@ class DownloadManager {
     this.tasks = [];
     this.panel = document.getElementById('download-panel');
     this.list = document.getElementById('download-list');
+    this.badge = document.getElementById('download-badge');
+    this.clearBtn = document.getElementById('download-clear');
+    this.closeBtn = document.getElementById('download-panel-close');
+    if (this.clearBtn) this.clearBtn.addEventListener('click', (e) => { e.stopPropagation(); this.clearCompleted(); });
+    if (this.closeBtn) this.closeBtn.addEventListener('click', () => { this.panel.classList.remove('show'); });
+    this.list.addEventListener('click', (e) => {
+      const removeBtn = e.target.closest('.download-item-remove');
+      if (removeBtn) { e.stopPropagation(); this.removeTask(removeBtn.dataset.id); }
+    });
   }
   add(path) {
     const name = path.split('/').pop() || path;
-    const task = { id: Date.now() + Math.random().toString(36), name, path, progress: 0, status: 'downloading' };
+    const task = { id: Date.now() + Math.random().toString(36).slice(2), name, path, progress: 0, status: 'downloading' };
     this.tasks.unshift(task);
     this.render();
     this.panel.classList.add('show');
-
-    API.downloadFile(path, (percent) => {
-      task.progress = percent;
-      this.render();
-    }).then(() => {
-      task.progress = 100;
-      task.status = 'completed';
-      this.render();
+    API.downloadFile(path, (percent) => { task.progress = percent; this.render(); }).then(() => {
+      task.progress = 100; task.status = 'completed'; this.render();
+      showToast(`✓ 已下载: ${task.name}`);
     }).catch((err) => {
-      task.status = 'error';
-      task.errorMsg = err.message;
-      this.render();
+      task.status = 'error'; task.errorMsg = err.message || '下载失败'; this.render();
     });
   }
+  removeTask(id) {
+    this.tasks = this.tasks.filter(t => t.id !== id);
+    this.render();
+    if (this.tasks.length === 0) this.panel.classList.remove('show');
+  }
+  clearCompleted() {
+    const before = this.tasks.length;
+    this.tasks = this.tasks.filter(t => t.status === 'downloading');
+    const removed = before - this.tasks.length;
+    this.render();
+    if (this.tasks.length === 0) this.panel.classList.remove('show');
+    if (removed > 0) showToast(`已清理 ${removed} 条下载记录`);
+  }
+  togglePanel() { this.panel.classList.toggle('show'); }
+  updateBadge() {
+    if (!this.badge) return;
+    const activeCount = this.tasks.filter(t => t.status === 'downloading').length;
+    if (activeCount > 0) { this.badge.textContent = activeCount; this.badge.classList.add('show'); }
+    else { this.badge.classList.remove('show'); }
+  }
   render() {
-    if (this.tasks.length === 0) {
-      this.list.innerHTML = `<div style="padding:12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`;
-      return;
-    }
+    this.updateBadge();
+    if (this.tasks.length === 0) { this.list.innerHTML = `<div style="padding:16px 12px;text-align:center;color:var(--slate-8);font-size:12px;">暂无下载任务</div>`; return; }
     this.list.innerHTML = this.tasks.map(t => {
-      const statusText = t.status === 'completed' ? '已完成'
-                        : t.status === 'error'     ? '失败'
-                        : Math.floor(t.progress) + '%';
+      const statusText = t.status === 'completed' ? '已完成' : t.status === 'error' ? '失败' : Math.floor(t.progress) + '%';
       const barColor = t.status === 'error' ? 'background:#E5484D;' : '';
-      return `
-        <div class="download-item">
-          <div class="download-item-header">
-            <span class="download-item-name" title="${t.name}">${t.name}</span>
-            <span class="download-item-status">${statusText}</span>
-          </div>
-          <div class="download-progress">
-            <div class="download-progress-bar" style="width: ${t.progress}%; ${barColor}"></div>
-          </div>
-        </div>`;
+      return `<div class="download-item"><div class="download-item-header"><span class="download-item-name" title="${t.name}">${t.name}</span><span class="download-item-status">${statusText}</span><span class="download-item-remove" data-id="${t.id}">✖</span></div><div class="download-progress"><div class="download-progress-bar" style="width: ${t.progress}%; ${barColor}"></div></div></div>`;
     }).join('');
   }
 }
@@ -241,15 +237,13 @@ class CollapsibleItem extends HTMLElement {
       .file-icon { width: 14px; height: 14px; margin-right: 6px; display: inline-block; }
       .text { padding: 4px 10px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 0.1s; display: flex; align-items: center; } 
       .text:hover { background: rgba(0,0,0,0.08); } 
-      .spacer { flex: 1; height: 24px; } 
       .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.2s; overflow: hidden; } .toggle:checked ~ .fold { grid-template-rows: 1fr; } .content { min-height: 0; padding-left: 16px; display: flex; flex-direction: column; } :host([selected]) > .item-header { background: var(--blue-4) !important; color: var(--blue-11); }</style>
       <input type="checkbox" id="${id}" class="toggle" ${isOpen}>
       <label for="${id}" class="item-header" tabindex="0">
         <span class="icon"><i class="arrow"></i></span>
         <span class="text" title="${label}"><div class="file-icon">${getSvg('folder', '#0090ff')}</div>${label}</span>
       </label>
-      <div class="fold"><div class="content"><slot></slot></div></div>
-    `;
+      <div class="fold"><div class="content"><slot></slot></div></div>`;
     const headerEl = this.shadowRoot.querySelector('.item-header'), checkbox = this.shadowRoot.getElementById(id);
     headerEl.addEventListener('click', (e) => {
       if (e.target.closest('.text')) { e.preventDefault(); e.stopPropagation(); this.dispatchEvent(new CustomEvent('tree-navigate', { detail: this.getAttribute('path'), bubbles: true, composed: true })); return; }
@@ -268,35 +262,30 @@ class FMRibbon extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this.collapsed = false; }
   connectedCallback() {
     this.shadowRoot.innerHTML = `
-      <style>:host { display: block; background: var(--slate-2); border-bottom: 1px solid var(--slate-5); } .header { display: flex; align-items: center; border-bottom: 1px solid var(--slate-4); padding: 0 8px; background: white; } .tabs { display: flex; flex: 1; } .tab { padding: 6px 16px; font-size: 12px; cursor: pointer; margin-bottom: -1px; border: 1px solid transparent; } .tab.active { background: var(--slate-2); border-bottom-color: var(--slate-2); border-top: 2px solid var(--blue-9); } .ribbon-body { display: flex; height: 74px; overflow-x: auto; overflow-y: hidden; transition: height 0.2s; scrollbar-width: none; -webkit-overflow-scrolling: touch; } .ribbon-body::-webkit-scrollbar { display: none; } .ribbon-body.collapsed { height: 0; border-bottom: none; } .group { display: flex; flex-direction: column; border-right: 1px solid var(--slate-5); padding: 4px 8px; justify-content: space-between; flex-shrink: 0; } .group-title { font-size: 11px; color: var(--slate-8); text-align: center; margin-top: 4px; pointer-events: none; } .actions { display: flex; gap: 4px; } button { display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; padding: 2px 8px; color: var(--slate-12); font-size: 11px; white-space: nowrap; } button:hover { background: var(--slate-4); } button:active { background: var(--slate-5); transform: scale(0.98); } button .ico { width: 24px; height: 24px; margin-bottom: 2px; } button.small { flex-direction: row; padding: 2px 6px; justify-content: flex-start; } button.small .ico { width: 16px; height: 16px; margin-right: 4px; margin-bottom: 0; } .toggle-btn { cursor: pointer; padding: 4px 8px; font-size: 10px; color: var(--slate-8); margin-left: auto; }</style>
+      <style>:host { display: block; background: var(--slate-2); border-bottom: 1px solid var(--slate-5); } .header { display: flex; align-items: center; border-bottom: 1px solid var(--slate-4); padding: 0 8px; background: white; } .tabs { display: flex; flex: 1; } .tab { padding: 6px 16px; font-size: 12px; cursor: pointer; margin-bottom: -1px; border: 1px solid transparent; } .tab.active { background: var(--slate-2); border-bottom-color: var(--slate-2); border-top: 2px solid var(--blue-9); } .ribbon-body { display: flex; height: 74px; overflow-x: auto; overflow-y: hidden; transition: height 0.2s; scrollbar-width: none; } .ribbon-body::-webkit-scrollbar { display: none; } .ribbon-body.collapsed { height: 0; border-bottom: none; } .group { display: flex; flex-direction: column; border-right: 1px solid var(--slate-5); padding: 4px 8px; justify-content: space-between; flex-shrink: 0; } .group-title { font-size: 11px; color: var(--slate-8); text-align: center; margin-top: 4px; pointer-events: none; } .actions { display: flex; gap: 4px; } button { display: flex; flex-direction: column; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; padding: 2px 8px; color: var(--slate-12); font-size: 11px; white-space: nowrap; } button:hover { background: var(--slate-4); } button:active { background: var(--slate-5); transform: scale(0.98); } button .ico { width: 24px; height: 24px; margin-bottom: 2px; } button.small { flex-direction: row; padding: 2px 6px; justify-content: flex-start; } button.small .ico { width: 16px; height: 16px; margin-right: 4px; margin-bottom: 0; } .toggle-btn { cursor: pointer; padding: 4px 8px; font-size: 10px; color: var(--slate-8); margin-left: auto; }</style>
       <div class="header"><div class="tabs"><div class="tab active">主页</div></div><div class="toggle-btn" id="toggle">🔽</div></div>
       <div class="ribbon-body" id="body">
         <div class="group"><div class="actions">
           <div class="col"><button class="small" data-action="copy"><div class="ico">${getSvg('copy', '#8f8f8f')}</div>复制</button><button class="small" data-action="paste"><div class="ico">${getSvg('paste', '#8f8f8f')}</div>粘贴</button></div>
           <div class="col"><button class="small" data-action="cut"><div class="ico">${getSvg('cut', '#8f8f8f')}</div>剪切</button><button class="small" data-action="undo"><div class="ico">${getSvg('undo', '#8f8f8f')}</div>撤销</button></div>
         </div><div class="group-title">剪贴板</div></div>
-        
         <div class="group"><div class="actions">
           <button data-action="delete" style="color:#E5484D"><div class="ico">${getSvg('delete', '#E5484D')}</div>删除</button>
           <button data-action="rename"><div class="ico">${getSvg('rename', '#8f8f8f')}</div>重命名</button>
         </div><div class="group-title">组织</div></div>
-        
         <div class="group"><div class="actions">
           <button data-action="newfolder"><div class="ico">${getSvg('folder', '#0090ff')}</div>新建目录</button>
           <button data-action="newfile"><div class="ico">${getSvg('file', '#8f8f8f')}</div>新建文件</button>
         </div><div class="group-title">新建</div></div>
-        
         <div class="group"><div class="actions">
           <div class="col"><button class="small" data-action="sort-name"><div class="ico">${getSvg('txt', '#8f8f8f')}</div>按名称</button><button class="small" data-action="sort-date"><div class="ico">${getSvg('refresh', '#8f8f8f')}</div>按日期</button></div>
           <div class="col"><button class="small" data-action="sort-size"><div class="ico">${getSvg('zip', '#8f8f8f')}</div>按大小</button></div>
         </div><div class="group-title">排序</div></div>
-        
         <div class="group"><div class="actions">
           <button data-action="viewToggle" id="view-toggle-btn"><div class="ico">${getSvg('list', '#111')}</div>切换视图</button>
           <button data-action="refresh"><div class="ico">${getSvg('refresh', '#8f8f8f')}</div>刷新</button>
         </div><div class="group-title">查看</div></div>
-      </div>
-    `;
+      </div>`;
     this.shadowRoot.getElementById('toggle').addEventListener('click', () => { this.collapsed = !this.collapsed; this.shadowRoot.getElementById('body').classList.toggle('collapsed', this.collapsed); this.shadowRoot.getElementById('toggle').innerText = this.collapsed ? '◀' : '🔽'; });
     this.shadowRoot.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => this.dispatchEvent(new CustomEvent('action', { detail: btn.dataset.action, bubbles: true, composed: true }))));
   }
@@ -311,26 +300,21 @@ class FMAddressBar extends HTMLElement {
       <style>:host { display: flex; align-items: center; padding: 6px 12px; background: var(--slate-1); border-bottom: 1px solid var(--slate-4); gap: 8px; z-index: 100; position: relative; } .nav-btns { display: flex; gap: 2px; } .nav-btn { width: 28px; height: 28px; border-radius: 4px; border: none; background: transparent; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--slate-11); } .nav-btn:hover:not(:disabled) { background: var(--slate-4); } .nav-btn:disabled { color: var(--slate-7); cursor: not-allowed; } .container { flex: 1; display: flex; align-items: center; border: 1px solid var(--slate-6); background: white; border-radius: 4px; padding: 0 4px; height: 26px; overflow: hidden; transition: border 0.2s; } .container:focus-within { border-color: var(--blue-9); box-shadow: 0 0 0 1px var(--blue-9); } .crumb { font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 2px; white-space: nowrap; } .crumb:hover { background: var(--slate-4); } .sep { margin: 0 2px; color: var(--slate-8); font-size: 14px; user-select: none; } input { border: none; outline: none; flex: 1; font-size: 13px; background: transparent; width: 100%; } .search-area { position: relative; } .search-btn { background: transparent; border: none; font-size: 14px; cursor: pointer; padding: 4px 8px; border-radius: 4px; height: 28px; display: flex; align-items: center; justify-content: center; } .search-btn:hover { background: var(--slate-4); } .search-btn .ico { width: 16px; height: 16px; } .search-popup { position: absolute; top: calc(100% + 8px); right: 0; width: 260px; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 8px; opacity: 0; visibility: hidden; transform: translateY(-10px); transition: all 0.2s; z-index: 200; } .search-popup.active { opacity: 1; visibility: visible; transform: translateY(0); } .search-popup input { width: 100%; border: 1px solid var(--slate-4); padding: 8px 10px; border-radius: 4px; box-sizing: border-box; font-size: 13px; }</style>
       <div class="nav-btns"><button id="btn-back" class="nav-btn" disabled>←</button><button id="btn-forward" class="nav-btn" disabled>→</button><button id="btn-up" class="nav-btn" disabled>↑</button></div>
       <div class="container" id="box"><div id="breadcrumbs" style="display:flex; align-items:center; flex:1; overflow:hidden"></div><input type="text" id="editor" style="display:none;" tabindex="0"></div>
-      <div class="search-area"><button id="search-btn" class="search-btn" title="搜索"><div class="ico">${getSvg('search', '#111')}</div></button><div id="search-popup" class="search-popup"><input type="text" id="search-input" placeholder="输入并回车即可检索..."></div></div>
-    `;
+      <div class="search-area"><button id="search-btn" class="search-btn" title="搜索"><div class="ico">${getSvg('search', '#111')}</div></button><div id="search-popup" class="search-popup"><input type="text" id="search-input" placeholder="输入并回车即可检索..."></div></div>`;
     this.shadowRoot.getElementById('btn-back').addEventListener('click', () => this.dispatchEvent(new CustomEvent('nav-back', { bubbles: true, composed: true })));
     this.shadowRoot.getElementById('btn-forward').addEventListener('click', () => this.dispatchEvent(new CustomEvent('nav-forward', { bubbles: true, composed: true })));
     this.shadowRoot.getElementById('btn-up').addEventListener('click', () => this.dispatchEvent(new CustomEvent('nav-up', { bubbles: true, composed: true })));
-    
     const searchBtn = this.shadowRoot.getElementById('search-btn'), searchPopup = this.shadowRoot.getElementById('search-popup'), searchInput = this.shadowRoot.getElementById('search-input');
     searchBtn.addEventListener('click', (e) => { e.stopPropagation(); searchPopup.classList.toggle('active'); if(searchPopup.classList.contains('active')) searchInput.focus(); });
     document.addEventListener('click', (e) => { if(!e.composedPath().includes(this.shadowRoot.querySelector('.search-area'))) searchPopup.classList.remove('active'); });
-    
     const channel = new MessageChannel(); let pendingSearch = null;
     channel.port1.onmessage = () => { if(pendingSearch !== null) { this.dispatchEvent(new CustomEvent('search', { detail: pendingSearch, bubbles: true, composed: true })); pendingSearch = null; } };
-
     searchInput.addEventListener('keydown', (e) => { 
        e.stopPropagation(); 
        if(e.key === 'Escape') { searchInput.value = ''; searchPopup.classList.remove('active'); this.dispatchEvent(new CustomEvent('search', { detail: '', bubbles: true, composed: true })); } 
        if(e.key === 'Enter') { searchPopup.classList.remove('active'); searchInput.blur(); pendingSearch = searchInput.value; channel.port2.postMessage(null); } 
     });
     searchInput.addEventListener('input', (e) => { pendingSearch = e.target.value; channel.port2.postMessage(null); });
-
     const box = this.shadowRoot.getElementById('box'), crumbs = this.shadowRoot.getElementById('breadcrumbs'), editor = this.shadowRoot.getElementById('editor');
     box.addEventListener('click', (e) => { if (e.target.classList.contains('crumb')) this.dispatchEvent(new CustomEvent('navigate', { detail: e.target.dataset.path, bubbles: true, composed: true })); else { crumbs.style.display = 'none'; editor.style.display = 'block'; editor.focus(); editor.select(); } });
     editor.addEventListener('blur', () => { crumbs.style.display = 'flex'; editor.style.display = 'none'; });
@@ -372,23 +356,19 @@ class FMMainView extends HTMLElement {
         <div class="header-cell col-date" data-sort="date"><span>修改日期</span><span class="sort-icon">▼</span><div class="resizer" data-target="--col-date"></div></div>
         <div class="header-cell col-size" data-sort="size"><span>大小</span><span class="sort-icon">▼</span></div>
       </div>
-      <div class="skeleton" id="skeleton"><div class="skel-row"><div class="skel-icon"></div><div class="skel-text" style="max-width: 40%"></div></div><div class="skel-row"><div class="skel-icon"></div><div class="skel-text" style="max-width: 60%"></div></div><div class="skel-row"><div class="skel-icon"></div><div class="skel-text" style="max-width: 30%"></div></div><div class="skel-row"><div class="skel-icon"></div><div class="skel-text" style="max-width: 50%"></div></div></div>
+      <div class="skeleton" id="skeleton"><div class="skel-row"><div class="skel-icon"></div><div class="skel-text" style="max-width: 40%"></div></div><div class="skel-row"><div class="skel-icon"></div><div class="skel-text" style="max-width: 60%"></div></div></div>
       <div class="scroll-container" id="scroller" tabindex="0"><div class="phantom" id="phantom"></div><div class="viewport" id="viewport"></div><div class="marquee" id="marquee"></div></div>`;
-    
     this.scroller = this.shadowRoot.getElementById('scroller'); this.phantom = this.shadowRoot.getElementById('phantom'); this.viewport = this.shadowRoot.getElementById('viewport'); this.marquee = this.shadowRoot.getElementById('marquee');
     this.scroller.addEventListener('scroll', () => requestAnimationFrame(() => this.renderVisibleItems()));
     new ResizeObserver(() => this.renderVisibleItems()).observe(this.scroller);
-    
     this.setAttribute('view-mode', this.viewMode);
     this.initInteractionEngine();
     this.initHeaderResizer();
-    
     this.scroller.addEventListener('dblclick', (e) => {
       const el = e.target.closest('.item');
-      if (el) { const item = this.renderedItems[el.dataset.idx]; if (item.type === 'folder') this.dispatchEvent(new CustomEvent('navigate', { detail: item.path, bubbles: true, composed: true })); else this.dispatchEvent(new CustomEvent('action', { detail: 'view-file', bubbles: true, composed: true })); }
+      if (el) { const item = this.renderedItems[el.dataset.idx]; if (item.type === 'folder' && !item.inTrash) this.dispatchEvent(new CustomEvent('navigate', { detail: item.path, bubbles: true, composed: true })); else if (!item.inTrash) this.dispatchEvent(new CustomEvent('action', { detail: 'view-file', bubbles: true, composed: true })); }
     });
   }
-
   initHeaderResizer() {
     const headers = this.shadowRoot.querySelectorAll('.header-cell');
     headers.forEach(h => {
@@ -403,10 +383,8 @@ class FMMainView extends HTMLElement {
        });
     });
   }
-
   showSkeleton(show) { this.isLoading = show; this.shadowRoot.getElementById('skeleton').classList.toggle('active', show); }
   triggerFadeAnim() { this.viewport.classList.remove('animate-change'); void this.viewport.offsetWidth; this.viewport.classList.add('animate-change'); }
-  
   setItems(items) { this.items = items; this.selectedIds.clear(); this.scroller.scrollTop = 0; this.applySortAndFilter(); this.triggerFadeAnim(); }
   filterItems(keyword) { this.searchKeyword = keyword; this.scroller.scrollTop = 0; this.applySortAndFilter(); this.triggerFadeAnim(); }
   sortItems(by) { 
@@ -427,59 +405,41 @@ class FMMainView extends HTMLElement {
   renderVisibleItems() {
     if (!this.scroller || this.isLoading) return;
     if (!this.renderedItems.length) { this.viewport.innerHTML=`<div class="empty-state"><div class="ico">${getSvg('search','#8f8f8f')}</div><span>此文件夹为空或无匹配项</span></div>`; this.phantom.style.height='0'; return; }
-    
     const cw = this.scroller.clientWidth, ch = this.scroller.clientHeight, isList = this.viewMode === 'list';
     const iW = isList ? cw : 108, iH = isList ? 32 : 108, cols = isList ? 1 : Math.max(1, Math.floor(cw / iW));
-    
     this.phantom.style.height = `${Math.ceil(this.renderedItems.length / cols) * iH + 0}px`;
-    
     const startRow = Math.max(0, Math.floor(this.scroller.scrollTop / iH) - 1), visibleRows = Math.ceil(ch / iH) + 3; 
     const startIdx = startRow * cols, endIdx = Math.min(this.renderedItems.length, startIdx + visibleRows * cols);
-
     const existingMap = new Map(Array.from(this.viewport.querySelectorAll('.item')).map(el => [el.dataset.path, el]));
     const empty = this.viewport.querySelector('.empty-state'); if(empty) empty.remove();
-
     for (let i = startIdx; i < endIdx; i++) {
       const item = this.renderedItems[i], isSelected = this.selectedIds.has(item.path);
       const r = Math.floor(i / cols), c = i % cols, top = r * iH, left = c * iW;
-      
       let el = existingMap.get(item.path); let isNew = false;
       if (!el) { el = document.createElement('div'); this.viewport.appendChild(el); isNew = true; } else { existingMap.delete(item.path); }
-      
       el.className = `item ${isSelected ? 'selected' : ''} ${isList ? 'list-item' : 'grid-item'}`;
       el.dataset.path = item.path; el.dataset.idx = i; el.dataset.type = item.type;
+      if (item.inTrash) el.dataset.inTrash = '1'; else delete el.dataset.inTrash;
       el.style.transform = `translate(${left}px, ${top}px)`; el.style.width = `${iW}px`; el.style.height = `${iH}px`;
-      
+      const dateText = item.inTrash ? (item.deletedAt || item.modified) : item.modified;
       if (isNew || el.dataset.view !== this.viewMode) {
          el.dataset.view = this.viewMode;
-         if (isList) {
-             el.innerHTML = `<div class="col-name"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><span class="text" title="${item.name}">${item.name}</span></div><div class="col-date">${item.modified}</div><div class="col-size">${item.type==='folder'?'':formatBytes(item.size)}</div>`;
-         } else {
-             el.innerHTML = `<div class="grid-content"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><div class="text" title="${item.name}">${item.name}</div></div>`;
-         }
+         if (isList) el.innerHTML = `<div class="col-name"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><span class="text" title="${item.name}">${item.name}</span></div><div class="col-date">${dateText}</div><div class="col-size">${item.type==='folder'?'':formatBytes(item.size)}</div>`;
+         else el.innerHTML = `<div class="grid-content"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><div class="text" title="${item.name}">${item.name}</div></div>`;
       } else {
-         // v1 修复：防御性检查，结构缺失则强制重建，避免 textContent 空指针崩溃
          const nameEl = el.querySelector('.text');
-         const needRebuild = !nameEl
-             || (isList && !el.querySelector('.col-date'))
-             || (!isList && !el.querySelector('.grid-content'));
-
+         const needRebuild = !nameEl || (isList && !el.querySelector('.col-date')) || (!isList && !el.querySelector('.grid-content'));
          if (needRebuild) {
              el.dataset.view = this.viewMode;
-             if (isList) {
-                 el.innerHTML = `<div class="col-name"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><span class="text" title="${item.name}">${item.name}</span></div><div class="col-date">${item.modified}</div><div class="col-size">${item.type==='folder'?'':formatBytes(item.size)}</div>`;
-             } else {
-                 el.innerHTML = `<div class="grid-content"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><div class="text" title="${item.name}">${item.name}</div></div>`;
-             }
+             if (isList) el.innerHTML = `<div class="col-name"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><span class="text" title="${item.name}">${item.name}</span></div><div class="col-date">${dateText}</div><div class="col-size">${item.type==='folder'?'':formatBytes(item.size)}</div>`;
+             else el.innerHTML = `<div class="grid-content"><div class="icon">${getFileIconSvg(item.name, item.type)}</div><div class="text" title="${item.name}">${item.name}</div></div>`;
          } else if (isList) {
              const dateEl = el.querySelector('.col-date'), sizeEl = el.querySelector('.col-size');
              if (nameEl.textContent !== item.name) nameEl.textContent = item.name;
-             if (dateEl && dateEl.textContent !== item.modified) dateEl.textContent = item.modified;
+             if (dateEl && dateEl.textContent !== dateText) dateEl.textContent = dateText;
              const sz = item.type==='folder'?'':formatBytes(item.size);
              if (sizeEl && sizeEl.textContent !== sz) sizeEl.textContent = sz;
-         } else {
-             if (nameEl.textContent !== item.name) nameEl.textContent = item.name;
-         }
+         } else { if (nameEl.textContent !== item.name) nameEl.textContent = item.name; }
       }
     }
     existingMap.forEach(el => el.remove());
@@ -493,12 +453,16 @@ class FMMainView extends HTMLElement {
   initInteractionEngine() {
     let state = 'IDLE', startX, startY, lastClientY;
     let longPressTimer = null, autoScrollTimer = null, ghostEl = null, dragTargetItem = null;
+    // v3: 记录 pointerdown 时按下的元素
+    let pointerDownItem = null;
+    let pointerDownWasSelected = false;
     const cw = () => this.scroller.clientWidth, iW = () => this.viewMode === 'list' ? cw() : 108, iH = () => this.viewMode === 'list' ? 32 : 108, cols = () => this.viewMode === 'list' ? 1 : Math.max(1, Math.floor(cw() / iW()));
 
     const cleanup = () => {
       clearTimeout(longPressTimer); cancelAnimationFrame(autoScrollTimer); autoScrollTimer = null;
       this.marquee.style.display = 'none'; if(ghostEl) { ghostEl.remove(); ghostEl = null; }
       if(dragTargetItem) { dragTargetItem.classList.remove('drag-over'); dragTargetItem = null; }
+      pointerDownItem = null; pointerDownWasSelected = false;
       state = 'IDLE';
     };
 
@@ -525,30 +489,37 @@ class FMMainView extends HTMLElement {
       if (state.startsWith('TOUCH')) return; 
       const itemEl = e.target.closest('.item');
       if (itemEl && !this.selectedIds.has(itemEl.dataset.path)) { this.selectedIds.clear(); this.selectedIds.add(itemEl.dataset.path); this.syncSelectionVisuals(); }
-      this.dispatchEvent(new CustomEvent('context', { detail: { x: e.clientX, y: e.clientY, type: itemEl ? itemEl.dataset.type : 'empty' }, bubbles: true, composed: true }));
+      this.dispatchEvent(new CustomEvent('context', { detail: { x: e.clientX, y: e.clientY, type: itemEl ? itemEl.dataset.type : 'empty', inTrash: itemEl ? !!itemEl.dataset.inTrash : false }, bubbles: true, composed: true }));
     });
 
     this.scroller.addEventListener('pointerdown', (e) => {
       window.dispatchEvent(new Event('hide-context'));
       if(e.button !== 0 && e.pointerType === 'mouse') return;
-      
       const rect = this.scroller.getBoundingClientRect();
       if (e.clientX >= rect.right - 16) return; 
-      
-      cleanup(); startX = e.clientX - rect.left + this.scroller.scrollLeft; startY = e.clientY - rect.top + this.scroller.scrollTop; lastClientY = e.clientY;
+      cleanup(); 
+      startX = e.clientX - rect.left + this.scroller.scrollLeft; 
+      startY = e.clientY - rect.top + this.scroller.scrollTop; 
+      lastClientY = e.clientY;
       const itemEl = e.target.closest('.item');
+      // v3: 记录按下的元素和它当时是否已被选中
+      pointerDownItem = itemEl;
+      pointerDownWasSelected = !!(itemEl && this.selectedIds.has(itemEl.dataset.path));
       
       if (e.pointerType === 'mouse') {
          state = 'MOUSE_WAIT';
-         if (itemEl) { if (!e.ctrlKey && !this.selectedIds.has(itemEl.dataset.path)) { this.selectedIds.clear(); this.selectedIds.add(itemEl.dataset.path); this.syncSelectionVisuals(); } } 
-         else { if (!e.ctrlKey) { this.selectedIds.clear(); this.syncSelectionVisuals(); } }
+         if (itemEl) { 
+            if (!e.ctrlKey && !this.selectedIds.has(itemEl.dataset.path)) { this.selectedIds.clear(); this.selectedIds.add(itemEl.dataset.path); this.syncSelectionVisuals(); } 
+         } else { 
+            if (!e.ctrlKey) { this.selectedIds.clear(); this.syncSelectionVisuals(); } 
+         }
       } else {
          state = 'TOUCH_WAIT';
          longPressTimer = setTimeout(() => {
             if(state === 'TOUCH_WAIT') {
                state = 'TOUCH_LONG_PRESSED'; if(navigator.vibrate) navigator.vibrate(50);
                if(itemEl && !this.selectedIds.has(itemEl.dataset.path)) { this.selectedIds.clear(); this.selectedIds.add(itemEl.dataset.path); this.syncSelectionVisuals(); }
-               this.dispatchEvent(new CustomEvent('context', { detail: { x: e.clientX, y: e.clientY, type: itemEl ? itemEl.dataset.type : 'empty' }, bubbles: true, composed: true }));
+               this.dispatchEvent(new CustomEvent('context', { detail: { x: e.clientX, y: e.clientY, type: itemEl ? itemEl.dataset.type : 'empty', inTrash: itemEl ? !!itemEl.dataset.inTrash : false }, bubbles: true, composed: true }));
             }
          }, 400);
       }
@@ -561,18 +532,27 @@ class FMMainView extends HTMLElement {
       
       if (e.pointerType === 'mouse') {
          if (state === 'MOUSE_WAIT' && dist > 5) {
-            const itemEl = this.shadowRoot.elementFromPoint(e.clientX, e.clientY)?.closest('.item');
-            state = (this.selectedIds.size > 0 && itemEl && this.selectedIds.has(itemEl.dataset.path)) ? 'DRAG' : 'MARQUEE';
-            if(state === 'MARQUEE') { this.selectedIds.clear(); this.syncSelectionVisuals(); }
+            // v3: 判定依据——pointerdown 时按下的元素是否为"已选中"
+            if (pointerDownWasSelected && pointerDownItem) {
+                state = 'DRAG';
+            } else {
+                state = 'MARQUEE';
+                this.selectedIds.clear();
+                this.syncSelectionVisuals();
+            }
             this.scroller.setPointerCapture(e.pointerId);
          }
       } else {
          if (state === 'TOUCH_WAIT' && dist > 10) { clearTimeout(longPressTimer); state = 'SCROLLING'; return; }
          else if (state === 'TOUCH_LONG_PRESSED' && dist > 5) { 
              window.dispatchEvent(new Event('hide-context')); 
-             const itemEl = this.shadowRoot.elementFromPoint(e.clientX, e.clientY)?.closest('.item'); 
-             state = (this.selectedIds.size > 0 && itemEl && this.selectedIds.has(itemEl.dataset.path)) ? 'DRAG' : 'MARQUEE'; 
-             if(state === 'MARQUEE') { this.selectedIds.clear(); this.syncSelectionVisuals(); } 
+             if (pointerDownWasSelected && pointerDownItem) {
+                 state = 'DRAG';
+             } else {
+                 state = 'MARQUEE';
+                 this.selectedIds.clear();
+                 this.syncSelectionVisuals();
+             }
              this.scroller.setPointerCapture(e.pointerId);
          }
       }
@@ -590,7 +570,7 @@ class FMMainView extends HTMLElement {
       if (state === 'DRAG') {
         if (!ghostEl) { ghostEl = document.createElement('div'); ghostEl.className = 'drag-ghost'; ghostEl.innerHTML = `📄 <span class="badge">${this.selectedIds.size}</span> 项移动中`; document.body.appendChild(ghostEl); }
         if (!this.ghostRaf) { this.ghostRaf = requestAnimationFrame(() => { if (ghostEl) { ghostEl.style.transform = `translate(${e.clientX + 10}px, ${e.clientY + 10}px)`; } this.ghostRaf = null; }); }
-        ghostEl.style.display = 'none'; const hoverEl = this.shadowRoot.elementFromPoint(e.clientX, e.clientY)?.closest('.item[data-type="folder"]'); ghostEl.style.display = 'flex';
+        ghostEl.style.display = 'none'; const hoverEl = this.shadowRoot.elementFromPoint(e.clientX, e.clientY)?.closest('.item[data-type="folder"]:not([data-in-trash="1"])'); ghostEl.style.display = 'flex';
         if (dragTargetItem && dragTargetItem !== hoverEl) dragTargetItem.classList.remove('drag-over');
         if (hoverEl && !this.selectedIds.has(hoverEl.dataset.path)) { hoverEl.classList.add('drag-over'); dragTargetItem = hoverEl; } else dragTargetItem = null;
         startEdgeScroll(()=>{});
@@ -618,7 +598,7 @@ customElements.define("fm-main-view", FMMainView);
 class FMContextMenu extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
   connectedCallback() {
-    this.shadowRoot.innerHTML = `<style>:host { display: none; position: fixed; background: rgba(255,255,255,0.98); backdrop-filter: blur(10px); border: 1px solid var(--slate-5); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); min-width: 160px; z-index: 1000; font-size: 13px; padding: 4px; transform-origin: top left; } :host(.show) { display: block; animation: popIn 0.2s forwards; } .menu-item { position: relative; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--slate-12); } .menu-item:hover { background: var(--blue-9); color: white; } .divider { height: 1px; background: var(--slate-4); margin: 4px 0; } 
+    this.shadowRoot.innerHTML = `<style>:host { display: none; position: fixed; background: rgba(255,255,255,0.98); backdrop-filter: blur(10px); border: 1px solid var(--slate-5); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); min-width: 160px; z-index: 1000; font-size: 13px; padding: 4px; } :host(.show) { display: block; animation: popIn 0.2s forwards; } .menu-item { position: relative; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--slate-12); } .menu-item:hover { background: var(--blue-9); color: white; } .divider { height: 1px; background: var(--slate-4); margin: 4px 0; } 
       .has-submenu { padding-right: 24px; } .has-submenu::after { content: "▶"; position: absolute; right: 8px; font-size: 10px; color: var(--slate-8); } .menu-item:hover::after { color: white; }
       .submenu { position: absolute; left: 100%; top: -4px; background: rgba(255,255,255,0.98); border: 1px solid var(--slate-5); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); display: none; flex-direction: column; min-width: 140px; padding: 4px; backdrop-filter: blur(10px); color: var(--slate-12); }
       .has-submenu:hover > .submenu { display: flex; animation: popIn 0.2s forwards; }
@@ -630,23 +610,24 @@ class FMContextMenu extends HTMLElement {
   }
   show(x, y, contextType) {
     let html = '';
-    if (contextType === 'folder') { html += `<div class="menu-item" data-action="open" style="font-weight:bold">打开</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`; } 
-    else if (contextType === 'file') { html += `<div class="menu-item" data-action="view-file" style="font-weight:bold">查看</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`; } 
-    else { html += `<div class="menu-item has-submenu">查看<div class="submenu"><div class="menu-item" data-action="viewToggle">切换网格/列表</div></div></div><div class="menu-item has-submenu">排列方式<div class="submenu"><div class="menu-item" data-action="sort-name">按名称</div><div class="menu-item" data-action="sort-date">按日期</div><div class="menu-item" data-action="sort-size">按大小</div></div></div><div class="menu-item" data-action="refresh">刷新</div><div class="divider"></div><div class="menu-item" data-action="paste">粘贴</div><div class="menu-item" data-action="selectall">全选</div><div class="divider"></div><div class="menu-item has-submenu">新建<div class="submenu"><div class="menu-item" data-action="newfolder">📁 文件夹</div><div class="divider"></div><div class="menu-item" data-action="newfile-txt">📝 文本文档 (.txt)</div><div class="menu-item" data-action="newfile-md">📝 Markdown (.md)</div><div class="menu-item" data-action="newfile-js">⚙️ JS 脚本 (.js)</div></div></div>`; }
-    
+    if (contextType === 'trash-item') {
+      html += `<div class="menu-item" data-action="restore" style="font-weight:bold">还原</div><div class="divider"></div><div class="menu-item" data-action="delete-permanent" style="color:#E5484D">永久删除</div><div class="divider"></div><div class="menu-item" data-action="properties">属性</div>`;
+    } else if (contextType === 'trash-empty') {
+      html += `<div class="menu-item" data-action="empty-trash" style="color:#E5484D">清空回收站</div><div class="divider"></div><div class="menu-item" data-action="refresh">刷新</div>`;
+    } else if (contextType === 'folder') {
+      html += `<div class="menu-item" data-action="open" style="font-weight:bold">打开</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`;
+    } else if (contextType === 'file') {
+      html += `<div class="menu-item" data-action="view-file" style="font-weight:bold">查看</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`;
+    } else {
+      html += `<div class="menu-item has-submenu">查看<div class="submenu"><div class="menu-item" data-action="viewToggle">切换网格/列表</div></div></div><div class="menu-item has-submenu">排列方式<div class="submenu"><div class="menu-item" data-action="sort-name">按名称</div><div class="menu-item" data-action="sort-date">按日期</div><div class="menu-item" data-action="sort-size">按大小</div></div></div><div class="menu-item" data-action="refresh">刷新</div><div class="divider"></div><div class="menu-item" data-action="paste">粘贴</div><div class="menu-item" data-action="undo">撤销</div><div class="menu-item" data-action="selectall">全选</div><div class="divider"></div><div class="menu-item has-submenu">新建<div class="submenu"><div class="menu-item" data-action="newfolder">📁 文件夹</div><div class="divider"></div><div class="menu-item" data-action="newfile-txt">📝 文本文档 (.txt)</div><div class="menu-item" data-action="newfile-md">📝 Markdown (.md)</div><div class="menu-item" data-action="newfile-js">⚙️ JS 脚本 (.js)</div></div></div>`;
+    }
     const container = this.shadowRoot.getElementById('container'); container.innerHTML = html;
-    
     this.classList.add('show'); 
     const rect = this.getBoundingClientRect();
-    
     let finalX = x, finalY = y;
     if (x + rect.width > window.innerWidth) finalX = window.innerWidth - rect.width - 5;
     if (y + rect.height > window.innerHeight) finalY = window.innerHeight - rect.height - 5;
-    finalX = Math.max(5, finalX);
-    finalY = Math.max(5, finalY);
-    
-    this.style.left = `${finalX}px`; this.style.top = `${finalY}px`;
-    
+    this.style.left = `${Math.max(5, finalX)}px`; this.style.top = `${Math.max(5, finalY)}px`;
     container.querySelectorAll('.has-submenu').forEach(sub => {
       sub.addEventListener('mouseenter', () => {
         const submenu = sub.querySelector('.submenu');
@@ -659,7 +640,6 @@ class FMContextMenu extends HTMLElement {
         }
       });
     });
-
     container.querySelectorAll('.menu-item').forEach(item => { item.addEventListener('click', (e) => { e.stopPropagation(); if(item.classList.contains('has-submenu')) return; this.dispatchEvent(new CustomEvent('action', { detail: item.dataset.action, bubbles: true, composed: true })); this.hide(); }); });
   }
   hide() { this.classList.remove('show'); }
@@ -668,56 +648,183 @@ customElements.define("fm-context-menu", FMContextMenu);
 
 class FMStatusBar extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
+  connectedCallback() { this.update(0, 0); }
   update(total, selected) { this.shadowRoot.innerHTML = `<style>:host { display: flex; padding: 4px 16px; background: var(--slate-1); border-top: 1px solid var(--slate-5); font-size: 12px; gap: 16px; } .divider { width: 1px; background: var(--slate-6); }</style><span>${total} 个项目</span> ${selected > 0 ? `<div class="divider"></div><span>选中 ${selected} 个项目</span>` : ''}`; }
 }
 customElements.define("fm-statusbar", FMStatusBar);
 
 class WinFileExplorer extends HTMLElement {
-  constructor() { super(); this.attachShadow({ mode: "open" }); this.currentPath = "C:"; this.history = []; this.historyIndex = -1; }
+  constructor() { super(); this.attachShadow({ mode: "open" }); this.currentPath = "C:"; this.currentView = 'explorer'; this.history = []; this.historyIndex = -1; }
   async connectedCallback() {
     this.shadowRoot.innerHTML = `
-      <style>:host { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--slate-6); box-sizing: border-box; background: white; } .body-layout { display: flex; flex: 1; overflow: hidden; } .sidebar { width: 220px; background: white; border-right: 1px solid var(--slate-5); overflow-y: auto; padding: 8px; } .main-content { flex: 1; display: flex; flex-direction: column; position: relative; } @media (max-width: 768px) { .sidebar { display: none; } }</style>
+      <style>
+        :host { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--slate-6); box-sizing: border-box; background: white; }
+        .body-layout { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 220px; background: white; border-right: 1px solid var(--slate-5); display: flex; flex-direction: column; flex-shrink: 0; }
+        .sidebar-scroll { flex: 1; overflow-y: auto; padding: 8px; }
+        .sidebar-bottom { flex-shrink: 0; border-top: 1px solid var(--slate-5); padding: 6px; background: var(--slate-1); }
+        .quick-item { display: flex; align-items: center; padding: 6px 8px; cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: 500; gap: 10px; transition: background 0.1s; user-select: none; }
+        .quick-item:hover { background: var(--slate-4); }
+        .quick-item.active { background: var(--blue-4); color: var(--blue-11); }
+        .quick-icon { width: 18px; height: 18px; flex-shrink: 0; }
+        .quick-label { flex: 1; }
+        .quick-badge { background: var(--blue-9); color: white; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 600; min-width: 16px; text-align: center; display: none; }
+        .quick-badge.show { display: inline-block; }
+        .quick-badge.danger { background: #E5484D; }
+        .main-content { flex: 1; display: flex; flex-direction: column; position: relative; min-width: 0; }
+        @media (max-width: 768px) { .sidebar { display: none; } }
+      </style>
       <fm-ribbon id="ribbon"></fm-ribbon>
       <fm-addressbar id="addressbar"></fm-addressbar>
       <div class="body-layout">
-        <div class="sidebar" id="sidebar"><collapsible-tree id="realTree"></collapsible-tree></div>
+        <div class="sidebar" id="sidebar">
+          <div class="sidebar-scroll">
+            <collapsible-tree id="realTree"></collapsible-tree>
+          </div>
+          <div class="sidebar-bottom">
+            <div class="quick-item" id="btn-show-downloads" title="打开下载列表 (Ctrl+J)">
+              <span class="quick-icon">${getSvg('download', '#0090ff')}</span>
+              <span class="quick-label">下载</span>
+              <span class="quick-badge" id="download-badge"></span>
+            </div>
+            <div class="quick-item" id="btn-show-trash" title="打开回收站">
+              <span class="quick-icon">${getSvg('trash', '#8f8f8f')}</span>
+              <span class="quick-label">回收站</span>
+              <span class="quick-badge danger" id="trash-badge"></span>
+            </div>
+          </div>
+        </div>
         <div class="main-content"><fm-main-view id="mainview"></fm-main-view></div>
       </div>
       <fm-statusbar id="statusbar"></fm-statusbar>
-      <fm-context-menu id="contextmenu"></fm-context-menu>
-    `;
-    this.mainview = this.shadowRoot.getElementById('mainview'); this.addressbar = this.shadowRoot.getElementById('addressbar'); this.realTree = this.shadowRoot.getElementById('realTree'); this.contextmenu = this.shadowRoot.getElementById('contextmenu'); this.statusbar = this.shadowRoot.getElementById('statusbar'); this.ribbon = this.shadowRoot.getElementById('ribbon');
-    
-    this.addEventListener('navigate', (e) => this.navigate(e.detail)); this.addEventListener('tree-navigate', (e) => this.navigate(e.detail)); this.addEventListener('tree-load', (e) => this.loadTreeFolders(e.detail.path, e.detail.el, true));
-    this.addEventListener('nav-back', () => this.goBack()); this.addEventListener('nav-forward', () => this.goForward()); this.addEventListener('nav-up', () => this.goUp());
+      <fm-context-menu id="contextmenu"></fm-context-menu>`;
+    this.mainview = this.shadowRoot.getElementById('mainview'); 
+    this.addressbar = this.shadowRoot.getElementById('addressbar'); 
+    this.realTree = this.shadowRoot.getElementById('realTree'); 
+    this.contextmenu = this.shadowRoot.getElementById('contextmenu'); 
+    this.statusbar = this.shadowRoot.getElementById('statusbar'); 
+    this.ribbon = this.shadowRoot.getElementById('ribbon');
+    this.trashBadge = this.shadowRoot.getElementById('trash-badge');
+    this.trashBtn = this.shadowRoot.getElementById('btn-show-trash');
+
+    // v3: 开屏立即显示状态栏
+    this.statusbar.update(0, 0);
+
+    this.shadowRoot.getElementById('btn-show-downloads').addEventListener('click', () => {
+      downloadManager.togglePanel();
+    });
+    this.trashBtn.addEventListener('click', () => {
+      this.loadTrash();
+    });
+
+    this.addEventListener('navigate', (e) => this.navigate(e.detail)); 
+    this.addEventListener('tree-navigate', (e) => this.navigate(e.detail)); 
+    this.addEventListener('tree-load', (e) => this.loadTreeFolders(e.detail.path, e.detail.el, true));
+    this.addEventListener('nav-back', () => this.goBack()); 
+    this.addEventListener('nav-forward', () => this.goForward()); 
+    this.addEventListener('nav-up', () => this.goUp());
     this.addEventListener('action', (e) => this.handleAction(e.detail));
     this.addEventListener('search', (e) => this.mainview.filterItems(e.detail));
-    this.addEventListener('context', (e) => this.contextmenu.show(e.detail.x, e.detail.y, e.detail.type));
+    this.addEventListener('context', (e) => {
+      const inTrashView = this.currentView === 'trash';
+      const type = e.detail.type;
+      if (inTrashView) {
+        this.contextmenu.show(e.detail.x, e.detail.y, type === 'empty' ? 'trash-empty' : 'trash-item');
+      } else {
+        this.contextmenu.show(e.detail.x, e.detail.y, type);
+      }
+    });
     this.addEventListener('selectionChange', (e) => this.statusbar.update(this.mainview.renderedItems.length, e.detail.length));
     
     this.addEventListener('file-move', async (e) => {
-      try { await API.moveItem(e.detail.sources, e.detail.targetFolder); showToast(`成功将选定的项移动至目录`); this.rebuildTree(); this.loadPath(this.currentPath, true); } catch(err) { /* 拦截器已提示 */ }
+      try { 
+        await API.moveItem(e.detail.sources, e.detail.targetFolder); 
+        showToast(`成功移动 ${e.detail.sources.length} 项`); 
+        this.rebuildTree(); 
+        this.loadPath(this.currentPath, true); 
+      } catch(err) {}
     });
 
     document.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.altKey) { if (e.key === 'ArrowLeft') { e.preventDefault(); this.goBack(); } if (e.key === 'ArrowRight') { e.preventDefault(); this.goForward(); } if (e.key === 'ArrowUp') { e.preventDefault(); this.goUp(); } }
+      if (e.altKey) { 
+        if (e.key === 'ArrowLeft') { e.preventDefault(); this.goBack(); } 
+        if (e.key === 'ArrowRight') { e.preventDefault(); this.goForward(); } 
+        if (e.key === 'ArrowUp') { e.preventDefault(); this.goUp(); } 
+      }
       else if (e.key === 'Backspace') { e.preventDefault(); this.goBack(); }
       else if (e.key === 'Delete') { e.preventDefault(); this.handleAction('delete'); }
       else if (e.key === 'F2') { e.preventDefault(); this.handleAction('rename'); }
-      else if (e.ctrlKey || e.metaKey) { if (e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); this.handleAction('newfile-txt'); } else { switch(e.key.toLowerCase()) { case 'a': e.preventDefault(); this.mainview.selectAll(); break; case 'n': e.preventDefault(); this.handleAction('newfolder'); break; } } }
-      else if (e.key === 'Escape') { this.mainview.clearSelection(); window.dispatchEvent(new Event('hide-context')); document.getElementById('preview-modal').classList.remove('active'); document.getElementById('prop-modal').classList.remove('active'); }
-      else if (e.key === 'F5') { e.preventDefault(); this.loadPath(this.currentPath, true); }
+      else if (e.ctrlKey || e.metaKey) { 
+        if (e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); this.handleAction('newfile-txt'); } 
+        else { 
+          switch(e.key.toLowerCase()) { 
+            case 'a': e.preventDefault(); this.mainview.selectAll(); break; 
+            case 'c': e.preventDefault(); this.handleAction('copy'); break;
+            case 'x': e.preventDefault(); this.handleAction('cut'); break;
+            case 'v': e.preventDefault(); this.handleAction('paste'); break;
+            case 'z': e.preventDefault(); this.handleAction('undo'); break;
+            case 'j': e.preventDefault(); downloadManager.togglePanel(); break;
+            case 'n': e.preventDefault(); this.handleAction('newfolder'); break; 
+          } 
+        } 
+      }
+      else if (e.key === 'Escape') { 
+        this.mainview.clearSelection(); 
+        window.dispatchEvent(new Event('hide-context')); 
+        document.getElementById('preview-modal').classList.remove('active'); 
+        document.getElementById('prop-modal').classList.remove('active'); 
+      }
+      else if (e.key === 'F5') { e.preventDefault(); this.currentView === 'trash' ? this.loadTrash() : this.loadPath(this.currentPath, true); }
     });
 
-    this.rebuildTree(); this.navigate("C:");
+    this.rebuildTree(); 
+    this.navigate("C:");
+    this.refreshTrashBadge();
+  }
+
+  // v3: 刷新回收站 badge
+  async refreshTrashBadge() {
+    try {
+      const items = await API.getTrashList();
+      if (items.length > 0) { this.trashBadge.textContent = items.length; this.trashBadge.classList.add('show'); }
+      else { this.trashBadge.classList.remove('show'); }
+    } catch(e) {}
+  }
+
+  // v3: 加载回收站视图
+  async loadTrash() {
+    try {
+      this.mainview.showSkeleton(true);
+      const items = await API.getTrashList();
+      this.currentView = 'trash';
+      this.currentPath = '$TRASH';
+      this.addressbar.setPath('回收站', [{ path: '$TRASH', name: '回收站' }]);
+      this.addressbar.updateNavState(false, false, false);
+      this.mainview.showSkeleton(false);
+      this.mainview.setItems(items);
+      this.realTree.querySelectorAll('[selected]').forEach(el => el.removeAttribute('selected'));
+      this.trashBtn.classList.add('active');
+      this.refreshTrashBadge();
+    } catch (e) { this.mainview.showSkeleton(false); }
   }
 
   async rebuildTree() {
     const openPaths = new Set([...this.realTree.querySelectorAll('collapsible-item[open]')].map(el => el.getAttribute('path')));
-    this.realTree.innerHTML = ''; const rootItem = document.createElement('collapsible-item'); rootItem.setAttribute('label', 'C:'); rootItem.setAttribute('path', 'C:'); this.realTree.appendChild(rootItem);
-    const restore = async (node, path) => { if (openPaths.has(path) || path === 'C:') { await this.loadTreeFolders(path, node, false); node.setAttribute('open', ''); for (let child of node.querySelectorAll('collapsible-item')) await restore(child, child.getAttribute('path')); } };
-    await restore(rootItem, 'C:'); this.syncTreeState(this.currentPath);
+    this.realTree.innerHTML = ''; 
+    const rootItem = document.createElement('collapsible-item'); 
+    rootItem.setAttribute('label', 'C:'); 
+    rootItem.setAttribute('path', 'C:'); 
+    this.realTree.appendChild(rootItem);
+    const restore = async (node, path) => { 
+      if (openPaths.has(path) || path === 'C:') { 
+        await this.loadTreeFolders(path, node, false); 
+        node.setAttribute('open', ''); 
+        for (let child of node.querySelectorAll('collapsible-item')) await restore(child, child.getAttribute('path')); 
+      } 
+    };
+    await restore(rootItem, 'C:'); 
+    if (this.currentView === 'explorer') this.syncTreeState(this.currentPath);
   }
 
   async loadTreeFolders(path, parentElement, doExpand = false) {
@@ -730,7 +837,6 @@ class WinFileExplorer extends HTMLElement {
         const item = document.createElement('collapsible-item'); 
         item.setAttribute('label', f.name); 
         item.setAttribute('path', f.path); 
-        // 使用后端返回的 hasSubFolders 判断是否为叶子
         if (!f.hasSubFolders) item.setAttribute('leaf', '');
         parentElement.appendChild(item); 
       }); 
@@ -738,93 +844,217 @@ class WinFileExplorer extends HTMLElement {
       if(doExpand) parentElement.setAttribute('open', ''); 
     } catch(e) {}
   }
+
   async syncTreeState(targetPath) {
-    const ancestors = await API.getAncestors(targetPath); let currentContainer = this.realTree;
-    for (const anc of ancestors) { let node = currentContainer.querySelector(`collapsible-item[path="${anc.path}"]`); if (node) { if (!node.hasAttribute('loaded')) await this.loadTreeFolders(anc.path, node, false); node.setAttribute('open', ''); currentContainer = node; } }
+    const ancestors = await API.getAncestors(targetPath); 
+    let currentContainer = this.realTree;
+    for (const anc of ancestors) { 
+      let node = currentContainer.querySelector(`collapsible-item[path="${anc.path}"]`); 
+      if (node) { 
+        if (!node.hasAttribute('loaded')) await this.loadTreeFolders(anc.path, node, false); 
+        node.setAttribute('open', ''); 
+        currentContainer = node; 
+      } 
+    }
     this.realTree.querySelectorAll('[selected]').forEach(el => el.removeAttribute('selected'));
-    if(currentContainer !== this.realTree) { currentContainer.setAttribute('selected', ''); currentContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    if(currentContainer !== this.realTree) { 
+      currentContainer.setAttribute('selected', ''); 
+      currentContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); 
+    }
   }
 
-  navigate(path, isHistoryTravel = false) { this.loadPath(path, isHistoryTravel); }
-  goBack() { if (this.historyIndex > 0) { this.historyIndex--; this.loadPath(this.history[this.historyIndex], true); } }
-  goForward() { if (this.historyIndex < this.history.length - 1) { this.historyIndex++; this.loadPath(this.history[this.historyIndex], true); } }
-  goUp() { if (this.currentPath !== 'C:') { const parts = this.currentPath.split('/'); parts.pop(); this.loadPath(parts.join('/')); } }
+  navigate(path, isHistoryTravel = false) { 
+    this.currentView = 'explorer'; 
+    this.trashBtn.classList.remove('active');
+    this.loadPath(path, isHistoryTravel); 
+  }
+  goBack() { 
+    if (this.currentView === 'trash') { this.navigate(this.history[this.historyIndex] || 'C:'); return; }
+    if (this.historyIndex > 0) { this.historyIndex--; this.loadPath(this.history[this.historyIndex], true); } 
+  }
+  goForward() { 
+    if (this.currentView === 'trash') return;
+    if (this.historyIndex < this.history.length - 1) { this.historyIndex++; this.loadPath(this.history[this.historyIndex], true); } 
+  }
+  goUp() { 
+    if (this.currentView === 'trash') { this.navigate('C:'); return; }
+    if (this.currentPath !== 'C:') { const parts = this.currentPath.split('/'); parts.pop(); this.loadPath(parts.join('/')); } 
+  }
 
   async loadPath(path, isHistoryTravel = false) {
     try {
       this.mainview.showSkeleton(true);
       const ancestors = await API.getAncestors(path);
       const items = await API.getFolderContents(path);
+      this.currentView = 'explorer';
       this.currentPath = path; 
       if (!isHistoryTravel) { this.history = this.history.slice(0, this.historyIndex + 1); this.history.push(path); this.historyIndex++; }
       this.addressbar.setPath(path, ancestors);
       this.addressbar.updateNavState(this.historyIndex > 0, this.historyIndex < this.history.length - 1, path !== 'C:');
-      this.mainview.showSkeleton(false); this.mainview.setItems(items); this.syncTreeState(path);
-    } catch (e) { this.mainview.showSkeleton(false); /* 拦截器已提示 */ }
+      this.mainview.showSkeleton(false); 
+      this.mainview.setItems(items); 
+      this.syncTreeState(path);
+      this.trashBtn.classList.remove('active');
+    } catch (e) { this.mainview.showSkeleton(false); }
   }
 
   showPreview(path) {
      const ext = path.split('.').pop().toLowerCase(), name = path.split('/').pop();
      document.getElementById('preview-title').innerText = name + ' - 预览器';
      const body = document.getElementById('preview-body');
-     if(['png','jpg','jpeg','gif'].includes(ext)) { body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;"><div class="ico" style="width:120px;height:120px">${getSvg('image', '#0090ff')}</div><p style="color:var(--slate-8); margin-top:20px;">[内置图形引擎]</p></div>`; } 
-     else { body.innerHTML = `<textarea style="flex:1; border:none; padding:20px; resize:none; font-family: 'Consolas', monospace; font-size:14px; background:var(--slate-1); color:var(--slate-11); outline:none;" readonly>/**\n * 文件: ${name}\n * 路径: ${path}\n * (此为沙盒安全展示)\n */\n\nconsole.log("Hello, Windows File Explorer Ultimate!");</textarea>`; }
+     if(['png','jpg','jpeg','gif'].includes(ext)) { 
+       body.innerHTML = `<div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;"><div class="ico" style="width:120px;height:120px">${getSvg('image', '#0090ff')}</div><p style="color:var(--slate-8); margin-top:20px;">[内置图形引擎]</p></div>`; 
+     } else { 
+       body.innerHTML = `<textarea style="flex:1; border:none; padding:20px; resize:none; font-family: 'Consolas', monospace; font-size:14px; background:var(--slate-1); color:var(--slate-11); outline:none;" readonly>/**\n * 文件: ${name}\n * 路径: ${path}\n */\n\nconsole.log("Hello, Windows File Explorer Ultimate!");</textarea>`; 
+     }
      document.getElementById('preview-modal').classList.add('active');
   }
 
   async handleAction(action) {
     const selected = Array.from(this.mainview.selectedIds);
+    const inTrash = this.currentView === 'trash';
     try {
+      // 回收站专属 action
+      if (action === 'restore') {
+        if (!selected.length) return showToast("请先选择要还原的项", true);
+        await API.restoreFromTrash(selected);
+        showToast(`已还原 ${selected.length} 项`);
+        this.loadTrash();
+        this.rebuildTree();
+        return;
+      }
+      if (action === 'delete-permanent') {
+        if (!selected.length) return showToast("请先选择要永久删除的项", true);
+        if (confirm(`确定永久删除这 ${selected.length} 项吗？此操作不可恢复！`)) {
+          await API.purgeTrash(selected);
+          showToast(`已永久删除 ${selected.length} 项`);
+          this.loadTrash();
+        }
+        return;
+      }
+      if (action === 'empty-trash') {
+        if (confirm('确定清空回收站吗？此操作不可恢复！')) {
+          await API.clearTrash();
+          showToast('回收站已清空');
+          this.loadTrash();
+        }
+        return;
+      }
+
       if (action.startsWith('sort-')) { this.mainview.sortItems(action.replace('sort-', '')); }
       else if (action === 'viewToggle') { this.mainview.toggleViewMode(); this.ribbon.updateViewIcon(this.mainview.viewMode === 'list'); }
-      else if (action === 'refresh') this.loadPath(this.currentPath, true);
+      else if (action === 'refresh') { inTrash ? this.loadTrash() : this.loadPath(this.currentPath, true); }
       else if (action === 'selectall') this.mainview.selectAll();
       else if (action === 'selectnone') this.mainview.clearSelection();
-      else if (action === 'open') { if(selected.length === 1 && this.mainview.items.find(i => i.path === selected[0]).type === 'folder') this.loadPath(selected[0]); }
-      else if (action === 'view-file') { if(selected.length === 1 && this.mainview.items.find(i => i.path === selected[0]).type === 'file') this.showPreview(selected[0]); }
+      else if (action === 'open') { if(!inTrash && selected.length === 1 && this.mainview.items.find(i => i.path === selected[0])?.type === 'folder') this.loadPath(selected[0]); }
+      else if (action === 'view-file') { if(!inTrash && selected.length === 1 && this.mainview.items.find(i => i.path === selected[0])?.type === 'file') this.showPreview(selected[0]); }
+      
+      // 复制
+      else if (action === 'copy') {
+        if (inTrash) return showToast("回收站中的项无法复制", true);
+        if (!selected.length) return showToast("请先选择要复制的项", true);
+        clipboard.mode = 'copy';
+        clipboard.paths = [...selected];
+        showToast(`已复制 ${selected.length} 项到剪贴板`);
+      }
+      // 剪切
+      else if (action === 'cut') {
+        if (inTrash) return showToast("回收站中的项无法剪切", true);
+        if (!selected.length) return showToast("请先选择要剪切的项", true);
+        clipboard.mode = 'cut';
+        clipboard.paths = [...selected];
+        showToast(`已剪切 ${selected.length} 项到剪贴板`);
+      }
+      // 粘贴
+      else if (action === 'paste') {
+        if (inTrash) return showToast("回收站不支持粘贴", true);
+        if (!clipboard.mode || !clipboard.paths.length) return showToast("剪贴板为空", true);
+        if (clipboard.mode === 'copy') {
+          await API.copyItems(clipboard.paths, this.currentPath);
+          showToast(`已粘贴 ${clipboard.paths.length} 项`);
+          this.loadPath(this.currentPath, true);
+        } else {
+          const cnt = clipboard.paths.length;
+          await API.moveItem(clipboard.paths, this.currentPath);
+          showToast(`已移动 ${cnt} 项到当前目录`);
+          clipboard.mode = null; clipboard.paths = [];
+          this.rebuildTree(); 
+          this.loadPath(this.currentPath, true);
+        }
+      }
+      // 撤销
+      else if (action === 'undo') {
+        await API.undo();
+        showToast("已撤销上一步操作");
+        this.rebuildTree();
+        if (inTrash) this.loadTrash(); else this.loadPath(this.currentPath, true);
+        this.refreshTrashBadge();
+      }
       else if (action === 'delete') {
          if(!selected.length) return showToast("请先选择要删除的项", true);
-         if(confirm(`确定永久删除这 ${selected.length} 个项目吗？`)) { 
-           await API.deleteItems(selected); 
-           if (selected.some(p => this.currentPath === p || this.currentPath.startsWith(p + '/'))) this.currentPath = 'C:'; 
-           this.rebuildTree(); this.loadPath(this.currentPath, true); 
-           showToast(`已删除 ${selected.length} 个项目`); 
+         const tip = inTrash ? `确定永久删除这 ${selected.length} 项吗？` : `确定删除这 ${selected.length} 项吗？（将移入回收站）`;
+         if(confirm(tip)) { 
+           if (inTrash) {
+             await API.purgeTrash(selected);
+             showToast(`已永久删除 ${selected.length} 项`);
+             this.loadTrash();
+           } else {
+             await API.deleteItems(selected); 
+             if (selected.some(p => this.currentPath === p || this.currentPath.startsWith(p + '/'))) this.currentPath = 'C:'; 
+             this.rebuildTree(); 
+             this.loadPath(this.currentPath, true); 
+             showToast(`已删除 ${selected.length} 项到回收站`); 
+             this.refreshTrashBadge();
+           }
          }
       }
       else if (action.startsWith('new')) {
+         if (inTrash) return showToast("回收站中无法新建", true);
          let type = 'file', ext = '.txt';
          if(action === 'newfolder') { type = 'folder'; ext = ''; }
          else if (action === 'newfile-md') ext = '.md';
          else if (action === 'newfile-js') ext = '.js';
          const name = prompt("请输入名称:", type === 'folder' ? "新建文件夹" : "新文件" + ext);
-         if (!name) return; if (!isValidName(name)) return showToast("名称不合法", true);
+         if (!name) return; 
+         if (!isValidName(name)) return showToast("名称不合法", true);
          await API.createItem(this.currentPath, type, name); 
-         this.rebuildTree(); this.loadPath(this.currentPath, true);
+         this.rebuildTree(); 
+         this.loadPath(this.currentPath, true);
       }
       else if (action === 'rename') {
+         if (inTrash) return showToast("回收站中的项无法重命名", true);
          if(selected.length !== 1) return showToast("只能选择单一项目进行重命名", true);
-         const oldPath = selected[0]; const oldName = oldPath.substring(oldPath.lastIndexOf('/') + 1); const newName = prompt("重命名为:", oldName);
-         if (!newName || newName === oldName) return; if (!isValidName(newName)) return showToast("名称不合法", true);
+         const oldPath = selected[0]; 
+         const oldName = oldPath.substring(oldPath.lastIndexOf('/') + 1); 
+         const newName = prompt("重命名为:", oldName);
+         if (!newName || newName === oldName) return; 
+         if (!isValidName(newName)) return showToast("名称不合法", true);
          await API.renameItem(oldPath, newName); 
          const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || 'C:';
          if (this.currentPath === oldPath) this.currentPath = normalizePath(parentPath, newName); 
          else if (this.currentPath.startsWith(oldPath + '/')) this.currentPath = this.currentPath.replace(oldPath, normalizePath(parentPath, newName));
-         this.rebuildTree(); this.loadPath(this.currentPath, true);
+         this.rebuildTree(); 
+         this.loadPath(this.currentPath, true);
       }
       else if (action === 'properties') {
          if(selected.length !== 1) return showToast("请选择单个文件查看属性", true);
          const prop = await API.getProperties(selected[0]); 
          document.getElementById('prop-title').innerText = prop.name + ' 的属性';
-         document.getElementById('prop-body').innerHTML = `<div class="prop-row"><span>类型：</span><span>${prop.type === 'folder' ? '文件夹' : '文件'}</span></div><div class="prop-row"><span>位置：</span><span style="word-break:break-all">${selected[0]}</span></div><div class="prop-row"><span>大小：</span><span>${formatBytes(prop.size)}</span></div><div class="prop-row"><span>创建时间：</span><span>${prop.created}</span></div><div class="prop-row"><span>修改时间：</span><span>${prop.modified}</span></div><div class="prop-row"><span>权限：</span><span>${prop.perms}</span></div><div class="prop-row"><span>所有者：</span><span>${prop.owner}</span></div>`;
+         let extra = '';
+         if (inTrash) {
+           const item = this.mainview.items.find(i => i.path === selected[0]);
+           if (item) extra = `<div class="prop-row"><span>原位置：</span><span style="word-break:break-all">${item.originalPath || '-'}</span></div><div class="prop-row"><span>删除时间：</span><span>${item.deletedAt || '-'}</span></div>`;
+         }
+         document.getElementById('prop-body').innerHTML = `<div class="prop-row"><span>类型：</span><span>${prop.type === 'folder' ? '文件夹' : '文件'}</span></div><div class="prop-row"><span>位置：</span><span style="word-break:break-all">${selected[0]}</span></div><div class="prop-row"><span>大小：</span><span>${formatBytes(prop.size)}</span></div><div class="prop-row"><span>创建时间：</span><span>${prop.created}</span></div><div class="prop-row"><span>修改时间：</span><span>${prop.modified}</span></div>${extra}`;
          document.getElementById('prop-modal').classList.add('active');
       }
       else if (action === 'download') {
+         if (inTrash) return showToast("回收站中的项无法下载", true);
          if(!selected.length) return showToast("请先选择要下载的项目", true);
          selected.forEach(p => downloadManager.add(p));
          showToast(`已添加 ${selected.length} 个下载任务`);
       }
-      else if (['copy', 'paste', 'cut', 'undo'].includes(action)) showToast(`模拟执行高级系统操作: [${action}]`);
-    } catch(e) { /* 拦截器已提示 */ }
+    } catch(e) {}
   }
 }
 customElements.define("win-file-explorer", WinFileExplorer);
