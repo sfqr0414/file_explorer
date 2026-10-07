@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Windows File Explorer - The Flawless Edition v13</title>
+  <title>Windows File Explorer - The Flawless Edition v13.1</title>
   <script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
   <style>
     :root {
@@ -489,7 +489,6 @@ class UploadManager {
 }
 const uploadManager = new UploadManager();
 
-// ============ v13: 侧边栏折叠 grid 动画 + display:none 完全消除宽度 ============
 class CollapsibleItem extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
   connectedCallback() { this.render(); }
@@ -706,7 +705,6 @@ customElements.define("fm-addressbar", FMAddressBar);
 class FMMainView extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this.items = []; this.renderedItems = []; this.viewMode = localStorage.getItem('fm-view-mode') || 'list'; this.selectedIds = new Set(); this.sortConfig = { by: 'name', asc: true }; this.isLoading = false;
     this.showHidden = localStorage.getItem('fm-show-hidden') === 'true';
-    // v13: 双击检测状态
     this._lastDownPath = null;
     this._lastDownTime = 0;
     this._suppressDblclick = false;
@@ -748,10 +746,8 @@ class FMMainView extends HTMLElement {
     this.setAttribute('view-mode', this.viewMode);
     this.initInteractionEngine();
     this.initHeaderResizer();
-    // v13: 原生 dblclick 作为兜底（如果 pointerdown 时间戳检测没触发）
     this.scroller.addEventListener('dblclick', (e) => {
       if (this._suppressDblclick) {
-        // pointerdown 已处理，屏蔽本次
         this._suppressDblclick = false;
         e.preventDefault();
         e.stopPropagation();
@@ -774,9 +770,15 @@ class FMMainView extends HTMLElement {
       }
     });
   }
+  // ============ v13.1 修复 ============
   setLoading(loading) {
+    const wasLoading = this.isLoading;
     this.isLoading = loading;
     this.viewport.classList.toggle('loading', loading);
+    // 从 loading 恢复到非 loading：强制重绘，避免 setItems 时被 skip
+    if (wasLoading && !loading) {
+      requestAnimationFrame(() => this.renderVisibleItems());
+    }
   }
   initHeaderResizer() {
     const headers = this.shadowRoot.querySelectorAll('.header-cell');
@@ -798,7 +800,6 @@ class FMMainView extends HTMLElement {
     this.items = items; 
     this.selectedIds.clear(); 
     this.scroller.scrollTop = 0; 
-    // v13: 新目录加载完成后，重置双击检测状态
     this._lastDownPath = null;
     this._lastDownTime = 0;
     this.applySortAndFilter(); 
@@ -907,7 +908,6 @@ class FMMainView extends HTMLElement {
     });
     this.scroller.addEventListener('pointerdown', (e) => {
       if (this.isLoading) return;
-      // ============ v13: 用 pointerdown 时间戳检测双击 ============
       if (e.button === 0 && e.pointerType === 'mouse') {
         const itemEl = e.target.closest('.item');
         if (itemEl) {
