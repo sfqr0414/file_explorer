@@ -15,7 +15,6 @@
       --col-name: 50%; --col-date: 30%; --col-size: 20%;
     }
     
-    /* 修复 1：引入 100dvh 解决移动端底部物理导航栏遮挡应用的问题 */
     body, html { margin: 0; padding: 0; height: 100vh; height: 100dvh; font-family: var(--font-family); background: var(--slate-2); color: var(--slate-11); overflow: hidden; user-select: none; -webkit-user-select: none; }
     ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--slate-6); border-radius: 4px; border: 2px solid var(--slate-1); } ::-webkit-scrollbar-thumb:hover { background: var(--slate-8); }
     :focus-visible { outline: 2px solid var(--blue-9); outline-offset: -2px; }
@@ -36,6 +35,18 @@
     .modal-close { cursor: pointer; color: var(--slate-8); font-size: 16px; } .modal-close:hover { color: var(--slate-12); }
     .modal-body { padding: 16px; font-size: 13px; line-height: 1.8; color: var(--slate-12); overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
     .prop-row { display: flex; border-bottom: 1px dashed var(--slate-3); padding: 6px 0; } .prop-row span:first-child { width: 80px; color: var(--slate-8); }
+
+    /* 下载列表 UI 样式 */
+    .download-panel { position: fixed; right: 20px; bottom: 60px; width: 320px; background: white; border: 1px solid var(--slate-5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 4000; display: flex; flex-direction: column; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s; backdrop-filter: blur(10px); }
+    .download-panel.show { opacity: 1; visibility: visible; transform: translateY(0); }
+    .download-header { padding: 10px 16px; border-bottom: 1px solid var(--slate-4); font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; background: var(--slate-2); border-radius: 8px 8px 0 0; }
+    .download-body { padding: 8px; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .download-item { font-size: 12px; padding: 8px; border: 1px solid var(--slate-3); border-radius: 6px; background: var(--slate-1); }
+    .download-item-header { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; }
+    .download-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-weight: 500; color: var(--slate-12); }
+    .download-item-status { color: var(--slate-8); margin-left: 8px; flex-shrink: 0; }
+    .download-progress { height: 4px; background: var(--slate-4); border-radius: 2px; overflow: hidden; }
+    .download-progress-bar { height: 100%; background: var(--blue-9); width: 0%; transition: width 0.2s; }
   </style>
 </head>
 <body>
@@ -45,6 +56,14 @@
   <div id="toast-container"></div>
   <div class="modal-overlay" id="prop-modal"><div class="modal-box"><div class="modal-header"><span id="prop-title">文件属性</span><span class="modal-close" onclick="document.getElementById('prop-modal').classList.remove('active')">✖</span></div><div class="modal-body" id="prop-body"></div></div></div>
   <div class="modal-overlay" id="preview-modal"><div class="modal-box large"><div class="modal-header"><span id="preview-title">文件查看</span><span class="modal-close" onclick="document.getElementById('preview-modal').classList.remove('active')">✖</span></div><div class="modal-body" id="preview-body" style="padding: 0; background: var(--slate-1);"></div></div></div>
+  
+  <div class="download-panel" id="download-panel">
+    <div class="download-header">
+      <span>下载列表</span>
+      <span class="modal-close" onclick="document.getElementById('download-panel').classList.remove('show')">✖</span>
+    </div>
+    <div class="download-body" id="download-list"></div>
+  </div>
 
 <script>
 const SVGS = {
@@ -139,13 +158,56 @@ class MockFileService {
 }
 const API = new MockFileService();
 
+class DownloadManager {
+  constructor() {
+    this.tasks = [];
+    this.interval = null;
+    this.panel = document.getElementById('download-panel');
+    this.list = document.getElementById('download-list');
+  }
+  add(path) {
+    const name = path.split('/').pop() || path;
+    const task = { id: Date.now() + Math.random().toString(36), name, path, progress: 0, status: 'downloading' };
+    this.tasks.unshift(task);
+    this.render();
+    this.panel.classList.add('show');
+    if (!this.interval) this.interval = setInterval(() => this.tick(), 500);
+  }
+  tick() {
+    let hasActive = false;
+    this.tasks.forEach(t => {
+      if (t.status === 'downloading') {
+        hasActive = true;
+        t.progress += Math.random() * 20;
+        if (t.progress >= 100) { t.progress = 100; t.status = 'completed'; }
+      }
+    });
+    this.render();
+    if (!hasActive) { clearInterval(this.interval); this.interval = null; }
+  }
+  render() {
+    this.list.innerHTML = this.tasks.map(t => `
+      <div class="download-item">
+        <div class="download-item-header">
+          <span class="download-item-name" title="${t.name}">${t.name}</span>
+          <span class="download-item-status">${t.status === 'completed' ? '已完成' : Math.floor(t.progress) + '%'}</span>
+        </div>
+        <div class="download-progress">
+          <div class="download-progress-bar" style="width: ${t.progress}%"></div>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+const downloadManager = new DownloadManager();
+
 class CollapsibleItem extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
   connectedCallback() { this.render(); }
-  static get observedAttributes() { return ['label', 'open', 'path', 'loaded']; }
+  static get observedAttributes() { return ['label', 'open', 'path', 'loaded', 'leaf']; }
   attributeChangedCallback(name, oldVal, newVal) { if (oldVal !== newVal) this.render(); }
   render() {
-    const label = this.getAttribute("label") || "Item", isOpen = this.hasAttribute("open") ? "checked" : "", isLeaf = this.hasAttribute("leaf"), id = "tog_" + Math.random().toString(36).substr(2, 9);
+    const label = this.getAttribute("label") || "Item", isOpen = this.hasAttribute("open") ? "checked" : "", id = "tog_" + Math.random().toString(36).substr(2, 9);
     this.shadowRoot.innerHTML = `
       <style>:host { display: block; --hover-bg: var(--slate-4); outline: none; } .toggle { display: none; } 
       .item-header { display: flex; align-items: center; padding: 2px 4px; margin: 1px 0; cursor: pointer; border-radius: 4px; font-size: 13px; font-weight: 500; transition: background 0.1s; } 
@@ -158,17 +220,29 @@ class CollapsibleItem extends HTMLElement {
       .text:hover { background: rgba(0,0,0,0.08); } 
       .spacer { flex: 1; height: 24px; } 
       .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.2s; overflow: hidden; } .toggle:checked ~ .fold { grid-template-rows: 1fr; } .content { min-height: 0; padding-left: 16px; display: flex; flex-direction: column; } :host([selected]) > .item-header { background: var(--blue-4) !important; color: var(--blue-11); }</style>
-      ${!isLeaf ? `<input type="checkbox" id="${id}" class="toggle" ${isOpen}>` : ''}
+      <input type="checkbox" id="${id}" class="toggle" ${isOpen}>
       <label for="${id}" class="item-header" tabindex="0">
-        <span class="icon">${!isLeaf ? '<i class="arrow"></i>' : ''}</span>
-        <span class="text" title="${label}"><div class="file-icon">${!isLeaf ? getSvg('folder', '#0090ff') : getSvg('file', '#8f8f8f')}</div>${label}</span>
+        <span class="icon"><i class="arrow"></i></span>
+        <span class="text" title="${label}"><div class="file-icon">${getSvg('folder', '#0090ff')}</div>${label}</span>
       </label>
       <div class="fold"><div class="content"><slot></slot></div></div>
     `;
     const headerEl = this.shadowRoot.querySelector('.item-header'), checkbox = this.shadowRoot.getElementById(id);
     headerEl.addEventListener('click', (e) => {
+      // 点击文本进行导航
       if (e.target.closest('.text')) { e.preventDefault(); e.stopPropagation(); this.dispatchEvent(new CustomEvent('tree-navigate', { detail: this.getAttribute('path'), bubbles: true, composed: true })); return; }
-      if (checkbox && !checkbox.checked && !this.hasAttribute('loaded')) { e.preventDefault(); this.dispatchEvent(new CustomEvent('tree-load', { detail: { path: this.getAttribute('path'), el: this }, bubbles: true, composed: true })); }
+      
+      // 【核心修复】如果是叶子节点（没有子文件夹），阻止点击折叠/展开的默认行为，箭头不再变化
+      if (this.hasAttribute('leaf')) {
+        e.preventDefault();
+        return;
+      }
+
+      // 正常加载逻辑
+      if (checkbox && !checkbox.checked && !this.hasAttribute('loaded')) {
+        e.preventDefault();
+        this.dispatchEvent(new CustomEvent('tree-load', { detail: { path: this.getAttribute('path'), el: this }, bubbles: true, composed: true }));
+      }
     });
   }
 }
@@ -342,7 +416,6 @@ class FMMainView extends HTMLElement {
     const cw = this.scroller.clientWidth, ch = this.scroller.clientHeight, isList = this.viewMode === 'list';
     const iW = isList ? cw : 108, iH = isList ? 32 : 108, cols = isList ? 1 : Math.max(1, Math.floor(cw / iW));
     
-    // 【关键修复】增加 40px (0px测试也可以）的安全区 padding，防止移动端底部导航栏遮挡！
     this.phantom.style.height = `${Math.ceil(this.renderedItems.length / cols) * iH + 0}px`;
     
     const startRow = Math.max(0, Math.floor(this.scroller.scrollTop / iH) - 1), visibleRows = Math.ceil(ch / iH) + 3; 
@@ -513,7 +586,6 @@ class FMMainView extends HTMLElement {
 }
 customElements.define("fm-main-view", FMMainView);
 
-/** 6. 多层右键菜单引擎 */
 class FMContextMenu extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); }
   connectedCallback() {
@@ -522,6 +594,7 @@ class FMContextMenu extends HTMLElement {
       .submenu { position: absolute; left: 100%; top: -4px; background: rgba(255,255,255,0.98); border: 1px solid var(--slate-5); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); display: none; flex-direction: column; min-width: 140px; padding: 4px; backdrop-filter: blur(10px); color: var(--slate-12); }
       .has-submenu:hover > .submenu { display: flex; animation: popIn 0.2s forwards; }
       .submenu.left-side { left: auto; right: 100%; }
+      .submenu.bottom-side { top: auto; bottom: -4px; }
       @keyframes popIn { from { opacity: 0; transform: scale(0.96) translateY(-4px); } to { opacity: 1; transform: scale(1) translateY(0); } }</style>
       <div id="container"></div>`;
     document.addEventListener('pointerdown', (e) => { if (!e.composedPath().includes(this)) this.hide(); }); window.addEventListener('hide-context', () => this.hide());
@@ -530,14 +603,35 @@ class FMContextMenu extends HTMLElement {
     let html = '';
     if (contextType === 'folder') { html += `<div class="menu-item" data-action="open" style="font-weight:bold">打开</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`; } 
     else if (contextType === 'file') { html += `<div class="menu-item" data-action="view-file" style="font-weight:bold">查看</div><div class="divider"></div><div class="menu-item" data-action="copy">复制</div><div class="menu-item" data-action="cut">剪切</div><div class="menu-item" data-action="rename">重命名</div><div class="menu-item" data-action="delete" style="color:#E5484D">删除</div><div class="divider"></div><div class="menu-item" data-action="download">下载</div><div class="menu-item" data-action="properties">属性</div>`; } 
-    else { html += `<div class="menu-item has-submenu">查看<div class="submenu"><div class="menu-item" data-action="viewToggle">切换网格/列表</div></div></div><div class="menu-item has-submenu">排列方式<div class="submenu"><div class="menu-item" data-action="sort-name">按名称</div><div class="menu-item" data-action="sort-date">按日期</div><div class="menu-item" data-action="sort-size">按大小</div></div></div><div class="menu-item" data-action="refresh">刷新</div><div class="divider"></div><div class="menu-item" data-action="paste">粘贴</div><div class="menu-item" data-action="selectall">全选</div><div class="divider"></div><div class="menu-item has-submenu">新建<div class="submenu"><div class="menu-item" data-action="newfolder">📁 文件夹</div><div class="divider"></div><div class="menu-item" data-action="newfile-txt">📝 文本文档 (.txt)</div><div class="menu-item" data-action="newfile-md">📝 Markdown (.md)</div><div class="menu-item" data-action="newfile-js">🧑‍💻 JS 脚本 (.js)</div></div></div>`; }
+    else { html += `<div class="menu-item has-submenu">查看<div class="submenu"><div class="menu-item" data-action="viewToggle">切换网格/列表</div></div></div><div class="menu-item has-submenu">排列方式<div class="submenu"><div class="menu-item" data-action="sort-name">按名称</div><div class="menu-item" data-action="sort-date">按日期</div><div class="menu-item" data-action="sort-size">按大小</div></div></div><div class="menu-item" data-action="refresh">刷新</div><div class="divider"></div><div class="menu-item" data-action="paste">粘贴</div><div class="menu-item" data-action="selectall">全选</div><div class="divider"></div><div class="menu-item has-submenu">新建<div class="submenu"><div class="menu-item" data-action="newfolder">📁 文件夹</div><div class="divider"></div><div class="menu-item" data-action="newfile-txt">📝 文本文档 (.txt)</div><div class="menu-item" data-action="newfile-md">📝 Markdown (.md)</div><div class="menu-item" data-action="newfile-js">⚙️ JS 脚本 (.js)</div></div></div>`; }
+    
     const container = this.shadowRoot.getElementById('container'); container.innerHTML = html;
     
     this.classList.add('show'); 
-    container.querySelectorAll('.has-submenu').forEach(sub => { if (x + 160 + 140 > window.innerWidth) sub.querySelector('.submenu').classList.add('left-side'); });
-    container.querySelectorAll('.menu-item').forEach(item => { item.addEventListener('click', (e) => { e.stopPropagation(); if(item.classList.contains('has-submenu')) return; this.dispatchEvent(new CustomEvent('action', { detail: item.dataset.action, bubbles: true, composed: true })); this.hide(); }); });
-    const rect = this.getBoundingClientRect(); const finalX = Math.min(x, window.innerWidth - rect.width - 5), finalY = Math.min(y, window.innerHeight - rect.height - 5);
+    const rect = this.getBoundingClientRect();
+    
+    let finalX = x, finalY = y;
+    if (x + rect.width > window.innerWidth) finalX = window.innerWidth - rect.width - 5;
+    if (y + rect.height > window.innerHeight) finalY = window.innerHeight - rect.height - 5;
+    finalX = Math.max(5, finalX);
+    finalY = Math.max(5, finalY);
+    
     this.style.left = `${finalX}px`; this.style.top = `${finalY}px`;
+    
+    container.querySelectorAll('.has-submenu').forEach(sub => {
+      sub.addEventListener('mouseenter', () => {
+        const submenu = sub.querySelector('.submenu');
+        if (submenu) {
+          submenu.classList.remove('left-side', 'bottom-side');
+          const subRect = submenu.getBoundingClientRect();
+          const parentRect = sub.getBoundingClientRect();
+          if (subRect.right > window.innerWidth) submenu.classList.add('left-side');
+          if (parentRect.bottom + submenu.offsetHeight > window.innerHeight) submenu.classList.add('bottom-side');
+        }
+      });
+    });
+
+    container.querySelectorAll('.menu-item').forEach(item => { item.addEventListener('click', (e) => { e.stopPropagation(); if(item.classList.contains('has-submenu')) return; this.dispatchEvent(new CustomEvent('action', { detail: item.dataset.action, bubbles: true, composed: true })); this.hide(); }); });
   }
   hide() { this.classList.remove('show'); }
 }
@@ -549,7 +643,6 @@ class FMStatusBar extends HTMLElement {
 }
 customElements.define("fm-statusbar", FMStatusBar);
 
-/** 7. 主编排框架 */
 class WinFileExplorer extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this.currentPath = "C:"; this.history = []; this.historyIndex = -1; }
   async connectedCallback() {
@@ -600,7 +693,23 @@ class WinFileExplorer extends HTMLElement {
 
   async loadTreeFolders(path, parentElement, doExpand = false) {
     if(parentElement.hasAttribute('loaded')) return;
-    try { const items = await API.getFolderContents(path), folders = items.filter(i => i.type === 'folder'); parentElement.innerHTML = ''; folders.forEach(f => { const item = document.createElement('collapsible-item'); item.setAttribute('label', f.name); item.setAttribute('path', f.path); parentElement.appendChild(item); }); parentElement.setAttribute('loaded', 'true'); if(doExpand) parentElement.setAttribute('open', ''); } catch(e) {}
+    try { 
+      const items = await API.getFolderContents(path), folders = items.filter(i => i.type === 'folder'); 
+      parentElement.innerHTML = ''; 
+      folders.forEach(f => { 
+        const item = document.createElement('collapsible-item'); 
+        item.setAttribute('label', f.name); 
+        item.setAttribute('path', f.path); 
+        const hasSubFolders = API.fs[f.path] && API.fs[f.path].children && API.fs[f.path].children.some(childName => {
+           const child = API.fs[normalizePath(f.path, childName)];
+           return child && child.type === 'folder';
+        });
+        if (!hasSubFolders) item.setAttribute('leaf', '');
+        parentElement.appendChild(item); 
+      }); 
+      parentElement.setAttribute('loaded', 'true'); 
+      if(doExpand) parentElement.setAttribute('open', ''); 
+    } catch(e) {}
   }
   async syncTreeState(targetPath) {
     const ancestors = await API.getAncestors(targetPath); let currentContainer = this.realTree;
@@ -673,7 +782,12 @@ class WinFileExplorer extends HTMLElement {
          document.getElementById('prop-body').innerHTML = `<div class="prop-row"><span>类型：</span><span>${prop.type === 'folder' ? '文件夹' : '文件'}</span></div><div class="prop-row"><span>位置：</span><span style="word-break:break-all">${selected[0]}</span></div><div class="prop-row"><span>大小：</span><span>${formatBytes(prop.size)}</span></div><div class="prop-row"><span>创建时间：</span><span>${prop.created}</span></div><div class="prop-row"><span>修改时间：</span><span>${prop.modified}</span></div><div class="prop-row"><span>权限：</span><span>${prop.perms}</span></div><div class="prop-row"><span>所有者：</span><span>${prop.owner}</span></div>`;
          document.getElementById('prop-modal').classList.add('active');
       }
-      else if (['copy', 'paste', 'cut', 'download', 'undo'].includes(action)) showToast(`模拟执行高级系统操作: [${action}]`);
+      else if (action === 'download') {
+         if(!selected.length) return showToast("请先选择要下载的项目", true);
+         selected.forEach(p => downloadManager.add(p));
+         showToast(`已添加 ${selected.length} 个下载任务`);
+      }
+      else if (['copy', 'paste', 'cut', 'undo'].includes(action)) showToast(`模拟执行高级系统操作: [${action}]`);
     } catch(e) { showToast(e.message, true); }
   }
 }
