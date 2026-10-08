@@ -401,10 +401,7 @@ const FOLDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height=
   + '<path d="M2.5 8V14.1587H37.5V11.9798C37.5 10.8753 36.6046 9.97984 35.5 9.97984H21.4809C21.0683 9.97984 20.6657 9.85221 20.3285 9.61445L15.7199 6.36538C15.3826 6.12763 14.9801 6 14.5675 6H4.5C3.39543 6 2.5 6.89543 2.5 8Z" fill="#FAC800"/>'
   + '</svg>';
 
-// ============ 文件图标 ============
-// 纸张主体：x 2~31（宽 29，中心 x=16.5），y 2~38（高 36）
-// 彩色标签：宽 23，水平居中 → x=5（左/右各留 3 单位空隙），靠底部 y=21~36
-// 文字：x=16.5（标签水平中心）y=28.5（标签垂直中心）dominant-baseline=central
+// ============ 文件图标：彩色标签 ============
 const FILE_COLORS = {
   txt:  { bg: '#475569', label: 'TXT' },
   md:   { bg: '#475569', label: 'MD'  },
@@ -730,7 +727,7 @@ class CollapsibleItem extends HTMLElement {
         .toggle { display: none; }
         .item-header {
           display: flex; align-items: center;
-          padding: 5px 8px;
+          padding: 2px 4px;
           margin: 1px 0;
           cursor: pointer;
           border-radius: var(--radius-sm);
@@ -742,7 +739,8 @@ class CollapsibleItem extends HTMLElement {
           box-sizing: border-box;
           color: var(--foreground);
         }
-        .item-header:hover { background: var(--muted); }
+        /* 整个行 hover：淡背景 */
+        .item-header:hover { background: rgba(0,0,0,0.05); }
         .chev {
           width: 14px; height: 14px;
           display: flex; align-items: center; justify-content: center;
@@ -759,7 +757,16 @@ class CollapsibleItem extends HTMLElement {
           display: inline-flex; align-items: center; justify-content: center;
           flex-shrink: 0;
         }
-        .text { display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; }
+        /* 文本可点击区域有独立的 hover 背景和圆角 */
+        .text {
+          display: flex; align-items: center;
+          padding: 4px 8px;
+          border-radius: var(--radius-sm);
+          overflow: hidden; text-overflow: ellipsis;
+          cursor: pointer;
+          transition: background 0.12s;
+        }
+        .text:hover { background: rgba(0,0,0,0.07); }
         .fold { display: none; }
         .fold[data-state="open"], .fold[data-state="opening"], .fold[data-state="closing"] {
           display: grid;
@@ -945,20 +952,61 @@ class FMRibbon extends HTMLElement {
         }
         .checkbox-btn svg { width: 14px; height: 14px; }
 
+        /* ============================================
+           移动端：所有 Ribbon 按钮统一变成独立大按钮
+           （图标上、文字下），不再是桌面端的格子楼
+           ============================================ */
         @media (max-width: 768px) {
           .ribbon-header { height: 30px; padding: 0 6px; }
           .tab { padding: 0 10px; font-size: 12px; }
-          .ribbon-body { height: 60px; padding: 4px 4px; }
-          .ribbon-group { grid-template-rows: 1fr 0; padding: 0 4px; }
-          .ribbon-group-label { display: none; }
-          .ribbon-btn { width: 34px; height: 34px; padding: 0; justify-content: center; }
-          .ribbon-btn span { display: none; }
-          .ribbon-btn svg { width: 16px; height: 16px; }
-          .ribbon-btn.large { width: 40px; height: 44px; min-width: 0; padding: 0; }
-          .ribbon-btn.large svg { width: 18px; height: 18px; }
-          .checkbox-btn span { display: none; }
-          .checkbox-btn { width: 34px; justify-content: center; padding: 0; }
-          .ribbon-group-content.grid { display: flex; flex-direction: row; gap: 2px; }
+          .ribbon-body { height: 82px; padding: 4px 4px; }
+          .ribbon-group {
+            grid-template-rows: 1fr 14px;
+            padding: 0 4px;
+          }
+          .ribbon-group-content,
+          .ribbon-group-content.grid {
+            display: flex;
+            flex-direction: row;
+            gap: 2px;
+            align-items: center;
+          }
+          /* 所有 ribbon-btn（包括 .large）统一为独立大按钮 */
+          .ribbon-btn,
+          .ribbon-btn.large {
+            flex-direction: column;
+            height: 56px;
+            min-width: 50px;
+            padding: 5px 6px;
+            gap: 4px;
+            font-size: 10.5px;
+            border-radius: var(--radius);
+            justify-content: center;
+          }
+          .ribbon-btn svg,
+          .ribbon-btn.large svg { width: 20px; height: 20px; }
+          /* checkbox-btn 同样变为独立大按钮，input 隐藏，点击 label 切换 */
+          .checkbox-btn {
+            position: relative;
+            flex-direction: column;
+            height: 56px;
+            min-width: 50px;
+            padding: 5px 6px;
+            gap: 4px;
+            font-size: 10.5px;
+            justify-content: center;
+            border-radius: var(--radius);
+          }
+          .checkbox-btn svg { width: 20px; height: 20px; }
+          /* input 用绝对定位到右下角，作为选中状态指示 */
+          .checkbox-btn input {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 14px;
+            height: 14px;
+            margin: 0;
+          }
         }
       </style>
       <div class="ribbon-header">
@@ -1160,10 +1208,19 @@ class FMAddressBar extends HTMLElement {
           transition: background 0.1s;
         }
         .crumb:hover { background: var(--muted); }
+        .crumb-ellipsis {
+          font-size: 13px;
+          padding: 3px 6px;
+          color: var(--muted-foreground);
+          user-select: none;
+          cursor: default;
+          letter-spacing: 1px;
+        }
         .sep {
           margin: 0 1px;
           color: var(--faint-foreground);
           display: inline-flex; align-items: center;
+          flex-shrink: 0;
         }
         .sep svg { width: 12px; height: 12px; }
         input {
@@ -1175,6 +1232,52 @@ class FMAddressBar extends HTMLElement {
           font-family: inherit;
           padding: 0 6px;
         }
+
+        #search-indicator {
+          display: none;
+          align-items: center;
+          flex: 1;
+          gap: 8px;
+          min-width: 0;
+          padding: 0 6px;
+          overflow: hidden;
+        }
+        .search-indicator-icon {
+          color: var(--muted-foreground);
+          width: 14px; height: 14px;
+          flex-shrink: 0;
+          display: inline-flex; align-items: center; justify-content: center;
+        }
+        #search-indicator-text {
+          font-size: 13px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          color: var(--foreground);
+          flex: 1;
+          min-width: 0;
+        }
+        #search-indicator-text .kw {
+          font-weight: 600;
+          color: var(--foreground);
+        }
+        #search-indicator-text .dir {
+          color: var(--muted-foreground);
+        }
+        .search-indicator-clear {
+          width: 20px; height: 20px;
+          border: none; background: transparent;
+          color: var(--muted-foreground);
+          cursor: pointer;
+          border-radius: var(--radius-sm);
+          display: flex; align-items: center; justify-content: center;
+          padding: 0;
+          flex-shrink: 0;
+          transition: background 0.1s, color 0.1s;
+        }
+        .search-indicator-clear:hover { background: var(--muted); color: var(--foreground); }
+        .search-indicator-clear svg { width: 12px; height: 12px; }
+
         .search-area { position: relative; flex-shrink: 0; }
         .search-btn {
           background: transparent;
@@ -1204,10 +1307,11 @@ class FMAddressBar extends HTMLElement {
           z-index: 200;
         }
         .search-popup.active { opacity: 1; visibility: visible; transform: translateY(0); }
+        .search-input-wrap { position: relative; width: 100%; }
         .search-popup input {
           width: 100%;
           border: 1px solid var(--border);
-          padding: 6px 10px;
+          padding: 6px 32px 6px 10px;
           border-radius: var(--radius-sm);
           box-sizing: border-box;
           font-size: 13px;
@@ -1216,6 +1320,22 @@ class FMAddressBar extends HTMLElement {
           border-color: var(--ring);
           box-shadow: 0 0 0 2px rgba(24,24,27,0.08);
         }
+        .search-popup-clear {
+          position: absolute;
+          right: 5px; top: 50%;
+          transform: translateY(-50%);
+          width: 22px; height: 22px;
+          border: none; background: transparent;
+          color: var(--muted-foreground);
+          cursor: pointer;
+          border-radius: var(--radius-sm);
+          display: none;
+          align-items: center; justify-content: center;
+          padding: 0;
+          transition: background 0.1s, color 0.1s;
+        }
+        .search-popup-clear:hover { background: var(--muted); color: var(--foreground); }
+        .search-popup-clear svg { width: 12px; height: 12px; }
       </style>
       <button class="nav-btn menu-btn" id="btn-menu" title="菜单">${icon('menu', 16)}</button>
       <div class="nav-btns">
@@ -1224,15 +1344,24 @@ class FMAddressBar extends HTMLElement {
         <button id="btn-up" class="nav-btn" disabled title="上一级 (Alt+↑)">${icon('arrowUp', 16)}</button>
       </div>
       <div class="container" id="box">
-        <div id="breadcrumbs" style="display:flex; align-items:center; flex:1; overflow:hidden;"></div>
+        <div id="breadcrumbs" style="display:flex; align-items:center; flex:1; overflow:hidden; min-width:0;"></div>
+        <div id="search-indicator">
+          <span class="search-indicator-icon">${icon('search', 14)}</span>
+          <span id="search-indicator-text"></span>
+          <button id="search-indicator-clear" class="search-indicator-clear" title="清除搜索">${icon('x', 12)}</button>
+        </div>
         <input type="text" id="editor" style="display:none;" tabindex="0">
       </div>
       <div class="search-area">
         <button id="search-btn" class="search-btn" title="搜索">${icon('search', 15)}</button>
         <div id="search-popup" class="search-popup">
-          <input type="text" id="search-input" placeholder="在当前文件夹中搜索...">
+          <div class="search-input-wrap">
+            <input type="text" id="search-input" placeholder="在当前文件夹中搜索...">
+            <button id="search-popup-clear" class="search-popup-clear" title="清除">${icon('x', 12)}</button>
+          </div>
         </div>
       </div>`;
+
     this.shadowRoot.getElementById('btn-back').addEventListener('click', () => this.dispatchEvent(new CustomEvent('nav-back', { bubbles: true, composed: true })));
     this.shadowRoot.getElementById('btn-forward').addEventListener('click', () => this.dispatchEvent(new CustomEvent('nav-forward', { bubbles: true, composed: true })));
     this.shadowRoot.getElementById('btn-up').addEventListener('click', () => this.dispatchEvent(new CustomEvent('nav-up', { bubbles: true, composed: true })));
@@ -1241,40 +1370,145 @@ class FMAddressBar extends HTMLElement {
     const searchBtn = this.shadowRoot.getElementById('search-btn');
     const searchPopup = this.shadowRoot.getElementById('search-popup');
     const searchInput = this.shadowRoot.getElementById('search-input');
-    searchBtn.addEventListener('click', (e) => { e.stopPropagation(); searchPopup.classList.toggle('active'); if (searchPopup.classList.contains('active')) searchInput.focus(); });
-    document.addEventListener('click', (e) => { if (!e.composedPath().includes(this.shadowRoot.querySelector('.search-area'))) searchPopup.classList.remove('active'); });
+    const popupClearBtn = this.shadowRoot.getElementById('search-popup-clear');
+    const indicatorClearBtn = this.shadowRoot.getElementById('search-indicator-clear');
+
+    searchBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      searchPopup.classList.toggle('active');
+      if (searchPopup.classList.contains('active')) searchInput.focus();
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.composedPath().includes(this.shadowRoot.querySelector('.search-area'))) {
+        searchPopup.classList.remove('active');
+      }
+    });
+
     const channel = new MessageChannel();
     let pendingSearch = null;
-    channel.port1.onmessage = () => { if (pendingSearch !== null) { this.dispatchEvent(new CustomEvent('search', { detail: pendingSearch, bubbles: true, composed: true })); pendingSearch = null; } };
+    channel.port1.onmessage = () => {
+      if (pendingSearch !== null) {
+        this.dispatchEvent(new CustomEvent('search', { detail: pendingSearch, bubbles: true, composed: true }));
+        pendingSearch = null;
+      }
+    };
+
     searchInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Escape') { searchInput.value = ''; searchPopup.classList.remove('active'); this.dispatchEvent(new CustomEvent('search', { detail: '', bubbles: true, composed: true })); }
-      if (e.key === 'Enter') { searchPopup.classList.remove('active'); searchInput.blur(); pendingSearch = searchInput.value; channel.port2.postMessage(null); }
+      if (e.key === 'Escape') {
+        searchInput.value = '';
+        popupClearBtn.style.display = 'none';
+        searchPopup.classList.remove('active');
+        this.dispatchEvent(new CustomEvent('search', { detail: '', bubbles: true, composed: true }));
+      }
+      if (e.key === 'Enter') {
+        searchPopup.classList.remove('active');
+        searchInput.blur();
+        pendingSearch = searchInput.value;
+        channel.port2.postMessage(null);
+      }
     });
-    searchInput.addEventListener('input', (e) => { pendingSearch = e.target.value; channel.port2.postMessage(null); });
+    searchInput.addEventListener('input', (e) => {
+      const v = e.target.value;
+      popupClearBtn.style.display = v ? 'flex' : 'none';
+      pendingSearch = v;
+      channel.port2.postMessage(null);
+    });
+
+    popupClearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      searchInput.value = '';
+      popupClearBtn.style.display = 'none';
+      this.dispatchEvent(new CustomEvent('search', { detail: '', bubbles: true, composed: true }));
+    });
+
+    indicatorClearBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      popupClearBtn.style.display = 'none';
+      this.dispatchEvent(new CustomEvent('search', { detail: '', bubbles: true, composed: true }));
+    });
 
     const box = this.shadowRoot.getElementById('box');
     const crumbs = this.shadowRoot.getElementById('breadcrumbs');
     const editor = this.shadowRoot.getElementById('editor');
+    const indicator = this.shadowRoot.getElementById('search-indicator');
+
     box.addEventListener('click', (e) => {
-      if (e.target.classList.contains('crumb')) this.dispatchEvent(new CustomEvent('navigate', { detail: e.target.dataset.path || '', bubbles: true, composed: true }));
-      else { crumbs.style.display = 'none'; editor.style.display = 'block'; editor.focus(); editor.select(); }
+      if (e.target.closest('#search-indicator')) return;
+      if (e.target.classList.contains('crumb')) {
+        this.dispatchEvent(new CustomEvent('navigate', { detail: e.target.dataset.path || '', bubbles: true, composed: true }));
+      } else if (e.target === box || e.target === crumbs) {
+        crumbs.style.display = 'none';
+        indicator.style.display = 'none';
+        editor.style.display = 'block';
+        editor.focus();
+        editor.select();
+      }
     });
-    editor.addEventListener('blur', () => { crumbs.style.display = 'flex'; editor.style.display = 'none'; });
-    editor.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { this.dispatchEvent(new CustomEvent('navigate', { detail: editor.value.trim(), bubbles: true, composed: true })); editor.blur(); } });
+    editor.addEventListener('blur', () => {
+      if (indicator.style.display !== 'flex') crumbs.style.display = 'flex';
+      editor.style.display = 'none';
+    });
+    editor.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        this.dispatchEvent(new CustomEvent('navigate', { detail: editor.value.trim(), bubbles: true, composed: true }));
+        editor.blur();
+      }
+    });
   }
+
+  _renderBreadcrumbs(ancestors) {
+    const breadcrumbs = this.shadowRoot.getElementById('breadcrumbs');
+    const MAX_VISIBLE = 4;
+    let items;
+    if (ancestors.length <= MAX_VISIBLE) {
+      items = ancestors.map(a => ({ crumb: a }));
+    } else {
+      items = [
+        { crumb: ancestors[0] },
+        { ellipsis: true },
+        { crumb: ancestors[ancestors.length - 3] },
+        { crumb: ancestors[ancestors.length - 2] },
+        { crumb: ancestors[ancestors.length - 1] },
+      ];
+    }
+    let html = '';
+    items.forEach((item, i) => {
+      if (item.crumb) {
+        const isLast = i === items.length - 1;
+        html += `<span class="crumb" data-path="${item.crumb.path}" tabindex="0"${isLast ? ' style="font-weight:600;"' : ''}>${escapeHtml(item.crumb.name)}</span>`;
+      } else if (item.ellipsis) {
+        html += `<span class="crumb-ellipsis" title="中间路径已折叠">…</span>`;
+      }
+      if (i < items.length - 1) html += `<span class="sep">${icon('chevronRight', 12)}</span>`;
+    });
+    breadcrumbs.innerHTML = html;
+  }
+
   setPath(path, ancestors) {
     this.shadowRoot.getElementById('editor').value = path;
     const searchInput = this.shadowRoot.getElementById('search-input');
+    const popupClear = this.shadowRoot.getElementById('search-popup-clear');
     searchInput.value = '';
+    popupClear.style.display = 'none';
     this.shadowRoot.getElementById('search-popup').classList.remove('active');
-    this.shadowRoot.getElementById('breadcrumbs').innerHTML = ancestors.map((a, i) => {
-      const isLast = i === ancestors.length - 1;
-      const crumb = `<span class="crumb" data-path="${a.path}" tabindex="0"${isLast ? ' style="font-weight:600;"' : ''}>${escapeHtml(a.name)}</span>`;
-      const sep = !isLast ? `<span class="sep">${icon('chevronRight', 12)}</span>` : '';
-      return crumb + sep;
-    }).join('');
+    this.shadowRoot.getElementById('breadcrumbs').style.display = 'flex';
+    this.shadowRoot.getElementById('search-indicator').style.display = 'none';
+    this._renderBreadcrumbs(ancestors);
   }
+
+  setSearchMode(keyword, ancestors) {
+    const breadcrumbs = this.shadowRoot.getElementById('breadcrumbs');
+    const indicator = this.shadowRoot.getElementById('search-indicator');
+    const textEl = this.shadowRoot.getElementById('search-indicator-text');
+    const dirName = ancestors && ancestors.length > 0 ? ancestors[ancestors.length - 1].name : '此电脑';
+    textEl.innerHTML = `<span class="dir">在「${escapeHtml(dirName)}」中搜索：</span><span class="kw">${escapeHtml(keyword)}</span>`;
+    breadcrumbs.style.display = 'none';
+    this.shadowRoot.getElementById('editor').style.display = 'none';
+    indicator.style.display = 'flex';
+  }
+
   updateNavState(canBack, canForward, canUp) {
     this.shadowRoot.getElementById('btn-back').disabled = !canBack;
     this.shadowRoot.getElementById('btn-forward').disabled = !canForward;
@@ -1596,7 +1830,7 @@ class FMMainView extends HTMLElement {
   renderVisibleItems() {
     if (!this.scroller || this.isLoading) return;
     if (!this.renderedItems.length) {
-      this.viewport.innerHTML = `<div class="empty-state"><div class="ico">${FOLDER_SVG}</div><span>此文件夹为空</span></div>`;
+      this.viewport.innerHTML = `<div class="empty-state"><div class="ico">${FOLDER_SVG}</div><span>此文件夹为空或无匹配项</span></div>`;
       this.phantom.style.height = '0';
       return;
     }
@@ -1800,7 +2034,7 @@ class FMMainView extends HTMLElement {
       if (state === 'DRAG') {
         if (!ghostEl) {
           ghostEl = document.createElement('div'); ghostEl.className = 'drag-ghost';
-          ghostEl.innerHTML = `${icon('file', 14)}<span class="badge">${this.selectedIds.size}</span><span>项</span>`;
+          ghostEl.innerHTML = `${icon('file', 14)}<span class="badge">${this.selectedIds.size}</span><span>项移动中</span>`;
           document.body.appendChild(ghostEl);
         }
         if (!this.ghostRaf) { this.ghostRaf = requestAnimationFrame(() => { if (ghostEl) ghostEl.style.transform = `translate(${e.clientX + 10}px, ${e.clientY + 10}px)`; this.ghostRaf = null; }); }
@@ -2070,6 +2304,8 @@ class WinFileExplorer extends HTMLElement {
     this.history = []; this.historyIndex = -1;
     this.storageMode = 'disk'; this.showHidden = false;
     this._sidebarOpen = false;
+    this._currentAncestors = [];
+    this._searchKeyword = '';
   }
   async connectedCallback() {
     this.shadowRoot.innerHTML = `
@@ -2186,10 +2422,11 @@ class WinFileExplorer extends HTMLElement {
           font-weight: 500;
         }
 
+        /* 遮罩：改为很浅，避免太刺眼 */
         .sidebar-overlay {
           display: none;
           position: fixed; inset: 0;
-          background: rgba(9, 9, 11, 0.4);
+          background: rgba(9, 9, 11, 0.18);
           z-index: 3500;
           opacity: 0;
           transition: opacity 0.2s;
@@ -2280,7 +2517,18 @@ class WinFileExplorer extends HTMLElement {
     this.addEventListener('nav-up', () => this.goUp());
     this.addEventListener('toggle-sidebar', () => this._toggleSidebar());
     this.addEventListener('action', (e) => this.handleAction(e.detail));
-    this.addEventListener('search', (e) => this.mainview.filterItems(e.detail));
+
+    this.addEventListener('search', (e) => {
+      const keyword = e.detail;
+      this._searchKeyword = keyword;
+      this.mainview.filterItems(keyword);
+      if (keyword) {
+        this.addressbar.setSearchMode(keyword, this._currentAncestors || []);
+      } else {
+        this.addressbar.setPath(this.currentPath || '此电脑', this._currentAncestors || []);
+      }
+    });
+
     this.addEventListener('toggle-hidden', (e) => {
       this.showHidden = e.detail;
       localStorage.setItem('fm-show-hidden', this.showHidden ? 'true' : 'false');
@@ -2462,7 +2710,8 @@ class WinFileExplorer extends HTMLElement {
       const items = await API.getTrashList();
       this.currentView = 'trash';
       this.currentPath = '$TRASH';
-      this.addressbar.setPath('回收站', [{ path: '', name: '此电脑' }, { path: '$TRASH', name: '回收站' }]);
+      this._currentAncestors = [{ path: '', name: '此电脑' }, { path: '$TRASH', name: '回收站' }];
+      this.addressbar.setPath('回收站', this._currentAncestors);
       this.addressbar.updateNavState(false, false, false);
       this.mainview.setItems(items);
       this.realTree.querySelectorAll('[selected]').forEach(el => el.removeAttribute('selected'));
@@ -2542,6 +2791,7 @@ class WinFileExplorer extends HTMLElement {
   navigate(path, isHistoryTravel = false) {
     this.currentView = 'explorer';
     this.trashBtn.classList.remove('active');
+    this._searchKeyword = '';
     this.loadPath(path, isHistoryTravel);
   }
   goBack() {
@@ -2573,6 +2823,7 @@ class WinFileExplorer extends HTMLElement {
       const items = await API.getFolderContents(path);
       this.currentView = 'explorer';
       this.currentPath = path;
+      this._currentAncestors = ancestors;
       if (!isHistoryTravel) { this.history = this.history.slice(0, this.historyIndex + 1); this.history.push(path); this.historyIndex++; }
       this.addressbar.setPath(path || '此电脑', ancestors);
       const canUp = this.storageMode === 'disk' ? (path !== '' && path !== '/') : (path !== 'C:');
