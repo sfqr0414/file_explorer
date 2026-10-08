@@ -322,10 +322,10 @@ func handleFolderContentsDisk(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, map[string]interface{}{
 			"path": childPath, "type": t, "name": name,
-			"size": info.Size(),
-			"created": info.ModTime().Format("2006/1/2 15:04:05"),
+			"size":     info.Size(),
+			"created":  info.ModTime().Format("2006/1/2 15:04:05"),
 			"modified": info.ModTime().Format("2006/1/2 15:04:05"),
-			"owner": "user", "perms": "读/写", "hasSubFolders": sub,
+			"owner":    "user", "perms": "读/写", "hasSubFolders": sub,
 			"hidden": isHidden(name),
 		})
 	}
@@ -539,10 +539,10 @@ func handleTrashListDisk(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, map[string]interface{}{
 			"path": absPath, "type": t, "name": e.Name(),
-			"size": info.Size(),
-			"created": info.ModTime().Format("2006/1/2 15:04:05"),
+			"size":     info.Size(),
+			"created":  info.ModTime().Format("2006/1/2 15:04:05"),
 			"modified": info.ModTime().Format("2006/1/2 15:04:05"),
-			"owner": "", "perms": "", "hasSubFolders": false,
+			"owner":    "", "perms": "", "hasSubFolders": false,
 			"inTrash": true, "hidden": false,
 			"originalPath": meta.OriginalPath, "deletedAt": meta.DeletedAt,
 		})
@@ -1198,9 +1198,9 @@ func handleProperties(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, map[string]interface{}{
 			"type": t, "name": filepath.Base(absPath), "size": info.Size(),
-			"created": info.ModTime().Format("2006/1/2 15:04:05"),
+			"created":  info.ModTime().Format("2006/1/2 15:04:05"),
 			"modified": info.ModTime().Format("2006/1/2 15:04:05"),
-			"owner": "user", "perms": "读/写",
+			"owner":    "user", "perms": "读/写",
 		})
 		return
 	}
@@ -1214,9 +1214,8 @@ func handleProperties(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, node)
 }
 
-// ============ v15.1: 直连下载（浏览器原生 + 目录实时 zip 流式，已提速） ============
+// ============ 直连下载（单文件流式 / 目录多选实时 zip 流式） ============
 
-// flushWriter 包装：每次写入后 flush，让浏览器尽早收到首字节
 type flushWriter struct {
 	w io.Writer
 	f http.Flusher
@@ -1230,10 +1229,6 @@ func (fw *flushWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// writeZipEntry 写一个 zip 条目（使用 Store，不压缩，吞吐最大化）
-// 关键点：
-//  1. Method: zip.Store 而非默认 Deflate，避免单线程 CPU 压缩瓶颈
-//  2. 显式 src.Close()，不用 defer（defer 在 Walk 闭包里会攒到最后才执行）
 func writeZipEntry(zw *zip.Writer, name string, srcPath string, fi os.FileInfo) error {
 	fh := &zip.FileHeader{
 		Name:   name,
@@ -1256,7 +1251,6 @@ func writeZipEntry(zw *zip.Writer, name string, srcPath string, fi os.FileInfo) 
 	return copyErr
 }
 
-// streamZipWalk 递归打包目录内容到 zip writer
 func streamZipWalk(zw *zip.Writer, absPath string, rootDir string) {
 	filepath.Walk(absPath, func(p string, fi os.FileInfo, err error) error {
 		if err != nil || fi.IsDir() {
@@ -1272,9 +1266,6 @@ func streamZipWalk(zw *zip.Writer, absPath string, rootDir string) {
 	})
 }
 
-// GET /api/download?path=A&path=B
-// 单文件 → 直接 io.Copy 流式（Linux 下走 sendfile 零拷贝）
-// 单目录 / 多选 → 实时打包为 zip，边打边推
 func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	rawPaths := r.URL.Query()["path"]
 	cleanPaths := make([]string, 0, len(rawPaths))
@@ -1288,7 +1279,6 @@ func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ---- VFS 模式：只支持单文件，返回生成数据 ----
 	if STORAGE_MODE == ModeVFS {
 		if len(cleanPaths) != 1 {
 			writeError(w, 400, "VFS 模式暂不支持多选下载")
@@ -1330,7 +1320,6 @@ func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ---- 磁盘模式 ----
 	type itemInfo struct {
 		absPath string
 		info    os.FileInfo
@@ -1346,7 +1335,6 @@ func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		items = append(items, itemInfo{absPath, info})
 	}
 
-	// 单文件：直接流式（io.Copy 在 Linux 上自动走 sendfile 零拷贝）
 	if len(items) == 1 && !items[0].info.IsDir() {
 		info := items[0].info
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -1362,7 +1350,6 @@ func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 单目录 或 多选：边打包 zip 边推流给浏览器
 	var zipName string
 	if len(items) == 1 {
 		zipName = items[0].info.Name() + ".zip"
@@ -1372,9 +1359,8 @@ func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, zipName))
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Accel-Buffering", "no") // 提示 nginx 等反代不要整段缓冲
+	w.Header().Set("X-Accel-Buffering", "no")
 
-	// 通过 flushWriter 让数据边生成边下发
 	var zw *zip.Writer
 	if flusher, ok := w.(http.Flusher); ok {
 		zw = zip.NewWriter(&flushWriter{w: w, f: flusher})
@@ -1393,7 +1379,6 @@ func handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// 保留 meta / chunk 接口（向后兼容）
 func handleDownloadMeta(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if STORAGE_MODE == ModeVFS {
@@ -1929,7 +1914,6 @@ func main() {
 	mux.HandleFunc("/api/items/copy", handleCopy)
 	mux.HandleFunc("/api/items/undo", handleUndo)
 	mux.HandleFunc("/api/properties", handleProperties)
-	// 下载相关：直连下载（单文件流式 / 目录多选实时 zip 流式）
 	mux.HandleFunc("/api/download", handleDownloadFile)
 	mux.HandleFunc("/api/download/meta", handleDownloadMeta)
 	mux.HandleFunc("/api/download/chunk", handleDownloadChunk)
@@ -1937,14 +1921,11 @@ func main() {
 	mux.HandleFunc("/api/download/zip/prepare", handleZipPrepare)
 	mux.HandleFunc("/api/download/zip/chunk", handleZipChunk)
 	mux.HandleFunc("/api/download/zip/cleanup", handleZipCleanup)
-	// 上传
 	mux.HandleFunc("/api/upload/init", handleUploadInit)
 	mux.HandleFunc("/api/upload/chunk", handleUploadChunk)
 	mux.HandleFunc("/api/upload/complete", handleUploadComplete)
 	mux.HandleFunc("/api/upload/cancel", handleUploadCancel)
-	// 预览
 	mux.HandleFunc("/api/preview", handlePreview)
-	// 回收站
 	mux.HandleFunc("/api/trash", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -1956,7 +1937,6 @@ func main() {
 		}
 	})
 	mux.HandleFunc("/api/trash/restore", handleTrashRestore)
-	// 静态资源
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
 			http.ServeFile(w, r, "file_explorer.html")
