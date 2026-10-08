@@ -339,7 +339,7 @@
       <span>上传队列</span>
       <div class="panel-header-actions">
         <label class="concurrency-label" title="并发分片上传数">并发
-          <input type="number" id="upload-concurrency" min="1" max="16" value="4">
+          <input type="number" id="upload-concurrency" min="1" max="16" value="6">
         </label>
         <span class="panel-clear" id="upload-clear">清空</span>
         <span class="modal-close" id="upload-panel-close">
@@ -521,7 +521,10 @@ const showToast = (msg, isError = false) => {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-const TRANSFER_CONFIG = { uploadConcurrency: 4 };
+// 并发数默认提高到 6（浏览器同源上限）
+// 单分片大小提高到 8MB（减少 HTTP 往返次数）
+const UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024;
+const TRANSFER_CONFIG = { uploadConcurrency: 6 };
 const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8080' : '';
 axios.defaults.baseURL = API_BASE;
 axios.defaults.timeout = 0;
@@ -535,7 +538,8 @@ const clipboard = { mode: null, paths: [] };
 
 async function computeFileSha256(file, onProgress) {
   if (!crypto?.subtle) return "";
-  if (file.size > 500 * 1024 * 1024) return "";
+  // 大文件跳过 SHA-256，避免阻塞上传开始（用户可在服务端自行校验大小）
+  if (file.size > 100 * 1024 * 1024) return "";
   const buf = await file.arrayBuffer();
   if (onProgress) onProgress(100);
   const hashBuf = await crypto.subtle.digest('SHA-256', buf);
@@ -607,7 +611,7 @@ class UploadManager {
       const init = await API.uploadInit({ name: task.name, size: task.size, sha256: task.sha, parentPath: task.parentPath });
       task.uploadId = init.uploadId;
       task.uploadedChunks = new Set(init.uploadedChunks);
-      const chunkSize = 4 * 1024 * 1024;
+      const chunkSize = UPLOAD_CHUNK_SIZE;
       const total = Math.ceil(task.size / chunkSize) || 1;
       task.totalChunks = total;
       task.uploadedCount = init.uploadedChunks.length;
@@ -739,7 +743,6 @@ class CollapsibleItem extends HTMLElement {
           box-sizing: border-box;
           color: var(--foreground);
         }
-        /* 整个行 hover：淡背景 */
         .item-header:hover { background: rgba(0,0,0,0.05); }
         .chev {
           width: 14px; height: 14px;
@@ -757,7 +760,6 @@ class CollapsibleItem extends HTMLElement {
           display: inline-flex; align-items: center; justify-content: center;
           flex-shrink: 0;
         }
-        /* 文本可点击区域有独立的 hover 背景和圆角 */
         .text {
           display: flex; align-items: center;
           padding: 4px 8px;
@@ -952,10 +954,6 @@ class FMRibbon extends HTMLElement {
         }
         .checkbox-btn svg { width: 14px; height: 14px; }
 
-        /* ============================================
-           移动端：所有 Ribbon 按钮统一变成独立大按钮
-           （图标上、文字下），不再是桌面端的格子楼
-           ============================================ */
         @media (max-width: 768px) {
           .ribbon-header { height: 30px; padding: 0 6px; }
           .tab { padding: 0 10px; font-size: 12px; }
@@ -971,7 +969,6 @@ class FMRibbon extends HTMLElement {
             gap: 2px;
             align-items: center;
           }
-          /* 所有 ribbon-btn（包括 .large）统一为独立大按钮 */
           .ribbon-btn,
           .ribbon-btn.large {
             flex-direction: column;
@@ -985,7 +982,6 @@ class FMRibbon extends HTMLElement {
           }
           .ribbon-btn svg,
           .ribbon-btn.large svg { width: 20px; height: 20px; }
-          /* checkbox-btn 同样变为独立大按钮，input 隐藏，点击 label 切换 */
           .checkbox-btn {
             position: relative;
             flex-direction: column;
@@ -998,7 +994,6 @@ class FMRibbon extends HTMLElement {
             border-radius: var(--radius);
           }
           .checkbox-btn svg { width: 20px; height: 20px; }
-          /* input 用绝对定位到右下角，作为选中状态指示 */
           .checkbox-btn input {
             position: absolute;
             top: 4px;
@@ -1035,7 +1030,7 @@ class FMRibbon extends HTMLElement {
             <button class="ribbon-btn" data-action="copy" data-req="selection" title="复制 (Ctrl+C)">
               ${icon('copy', 14)}<span>复制</span>
             </button>
-            <button class="ribbon-btn" data-action="paste" title="粘贴 (Ctrl+V)">
+            <button class="ribbon-btn" data-action="paste" data-req="clipboard" title="粘贴 (Ctrl+V)">
               ${icon('clipboard', 14)}<span>粘贴</span>
             </button>
             <button class="ribbon-btn" data-action="cut" data-req="selection" title="剪切 (Ctrl+X)">
@@ -1138,6 +1133,7 @@ class FMRibbon extends HTMLElement {
       let enable = false;
       if (key === 'selection') enable = !!states.hasSelection;
       else if (key === 'single') enable = !!states.hasSingle;
+      else if (key === 'clipboard') enable = !!states.hasClipboard;
       btn.disabled = !enable;
     });
   }
@@ -1524,6 +1520,7 @@ class FMMainView extends HTMLElement {
     this.items = []; this.renderedItems = [];
     this.viewMode = localStorage.getItem('fm-view-mode') || 'list';
     this.selectedIds = new Set();
+    this.cutPaths = new Set(); // 处于"已剪切待粘贴"状态的路径
     this.sortConfig = { by: 'name', asc: true };
     this.isLoading = false;
     this.showHidden = localStorage.getItem('fm-show-hidden') === 'true';
@@ -1592,8 +1589,10 @@ class FMMainView extends HTMLElement {
         transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s, background 0.08s;
         display: flex; align-items: center;
       }
-      .item[data-hidden="1"] { opacity: 0.5; }
-      .item[data-hidden="1"]:hover { opacity: 0.75; }
+      /* 剪切状态：整个项半透明 */
+      .item[data-cut="1"] { opacity: 0.5; }
+      /* 隐藏文件：仅图标透明，文字保持清晰 */
+      .item[data-hidden="1"] .icon { opacity: 0.45; }
       .viewport.loading .item { pointer-events: none !important; }
 
       .list-item {
@@ -1620,6 +1619,7 @@ class FMMainView extends HTMLElement {
       .list-item .col-name .icon {
         width: 16px; height: 20px; flex-shrink: 0;
         display: inline-flex; align-items: center; justify-content: center;
+        transition: opacity 0.15s;
       }
       .list-item .col-name .text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
       .list-item .col-date,
@@ -1660,6 +1660,7 @@ class FMMainView extends HTMLElement {
         width: 42px; height: 50px;
         margin-bottom: 8px;
         display: inline-flex; align-items: center; justify-content: center;
+        transition: opacity 0.15s;
       }
       .grid-content .text {
         font-size: 12px;
@@ -1764,6 +1765,15 @@ class FMMainView extends HTMLElement {
     this.viewport.classList.toggle('loading', loading);
     if (wasLoading && !loading) requestAnimationFrame(() => this.renderVisibleItems());
   }
+  // 由主容器调用：设置 / 清除"剪切中"路径集合
+  setCutPaths(paths) {
+    this.cutPaths = new Set(paths || []);
+    this.renderVisibleItems();
+  }
+  clearCutPaths() {
+    this.cutPaths = new Set();
+    this.renderVisibleItems();
+  }
   initHeaderResizer() {
     const headers = this.shadowRoot.querySelectorAll('.header-cell');
     headers.forEach(h => {
@@ -1857,6 +1867,7 @@ class FMMainView extends HTMLElement {
       el.dataset.path = item.path; el.dataset.idx = i; el.dataset.type = item.type;
       if (item.inTrash) el.dataset.inTrash = '1'; else delete el.dataset.inTrash;
       if (item.hidden) el.dataset.hidden = '1'; else delete el.dataset.hidden;
+      if (this.cutPaths.has(item.path)) el.dataset.cut = '1'; else delete el.dataset.cut;
       el.style.transform = `translate(${left}px, ${top}px)`;
       el.style.width = `${width}px`;
       el.style.height = `${isList ? iH - 2 : iH - 8}px`;
@@ -2113,6 +2124,7 @@ class FMContextMenu extends HTMLElement {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: center;
+        transition: transform 0.15s;
       }
       .submenu {
         position: absolute;
@@ -2141,16 +2153,34 @@ class FMContextMenu extends HTMLElement {
           min-width: 0; width: auto;
           border-radius: var(--radius-xl);
           padding: 8px;
-          max-height: 65vh; overflow-y: auto;
+          max-height: 75vh; overflow-y: auto;
         }
         :host(.show) { animation: sheetUp 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes sheetUp { from { transform: translateY(100%); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } }
         .menu-item { padding: 12px 14px; border-radius: var(--radius); font-size: 14px; }
         .menu-item svg { width: 16px; height: 16px; }
+        /* 关闭 hover 打开逻辑，改用 .submenu-open 类 */
+        .has-submenu:hover > .submenu { display: none; }
+        .has-submenu.submenu-open > .submenu { display: flex; animation: popIn 0.14s; }
+        /* 箭头：展开时旋转 90 度 */
         .has-submenu::after { right: 14px; }
+        .has-submenu.submenu-open::after { transform: translateY(-50%) rotate(90deg); }
+        /* submenu 展开为内嵌样式，左右 padding 一致，内容水平居中 */
         .submenu {
-          position: static; box-shadow: none; border: none;
-          padding: 2px 0 2px 26px; min-width: 0;
+          position: static;
+          box-shadow: none;
+          border: none;
+          padding: 4px 0 0 0;
+          margin-top: 2px;
+          min-width: 0;
+          background: rgba(0,0,0,0.03);
+          border-radius: var(--radius);
+        }
+        .submenu .menu-item {
+          padding: 10px 14px;
+          font-size: 13px;
+          justify-content: flex-start;
+          text-align: left;
         }
       }
     </style>
@@ -2232,6 +2262,7 @@ class FMContextMenu extends HTMLElement {
       this.style.left = '';
       this.style.top = '';
     }
+    // 桌面端：submenu 位置动态调整（沿用原有逻辑）
     container.querySelectorAll('.has-submenu').forEach(sub => {
       sub.addEventListener('mouseenter', () => {
         const submenu = sub.querySelector('.submenu');
@@ -2244,14 +2275,30 @@ class FMContextMenu extends HTMLElement {
         }
       });
     });
+    // 所有叶子 menu-item（排除 has-submenu）点击 → 触发 action
     container.querySelectorAll('.menu-item').forEach(item => {
+      if (item.classList.contains('has-submenu')) return;
       item.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (item.classList.contains('has-submenu')) return;
         this.dispatchEvent(new CustomEvent('action', { detail: item.dataset.action, bubbles: true, composed: true }));
         this.hide();
       });
     });
+    // 移动端：has-submenu 用 click 切换展开，避免 hover 闪现/冲突
+    if (isMobile) {
+      container.querySelectorAll('.has-submenu').forEach(sub => {
+        sub.addEventListener('click', (e) => {
+          // 若点击来自 submenu 内部则忽略（防止冒泡重新切换）
+          if (e.target.closest('.submenu')) return;
+          e.stopPropagation();
+          // 关闭其他已展开的
+          container.querySelectorAll('.has-submenu.submenu-open').forEach(other => {
+            if (other !== sub) other.classList.remove('submenu-open');
+          });
+          sub.classList.toggle('submenu-open');
+        });
+      });
+    }
   }
   hide() { this.classList.remove('show'); }
 }
@@ -2422,7 +2469,6 @@ class WinFileExplorer extends HTMLElement {
           font-weight: 500;
         }
 
-        /* 遮罩：改为很浅，避免太刺眼 */
         .sidebar-overlay {
           display: none;
           position: fixed; inset: 0;
@@ -2501,7 +2547,7 @@ class WinFileExplorer extends HTMLElement {
     this.showHidden = localStorage.getItem('fm-show-hidden') === 'true';
     this.ribbon.setShowHidden(this.showHidden);
     this.mainview.setShowHidden(this.showHidden);
-    this.ribbon.setActionStates({ hasSelection: false, hasSingle: false });
+    this.ribbon.setActionStates({ hasSelection: false, hasSingle: false, hasClipboard: false });
     this.ribbon.updateViewIcon(this.mainview.viewMode === 'list');
 
     this.statusbar.update(0, 0);
@@ -2618,7 +2664,7 @@ class WinFileExplorer extends HTMLElement {
     if (uConc) {
       uConc.value = TRANSFER_CONFIG.uploadConcurrency;
       uConc.addEventListener('change', (e) => {
-        const v = Math.max(1, Math.min(16, parseInt(e.target.value) || 4));
+        const v = Math.max(1, Math.min(16, parseInt(e.target.value) || 6));
         TRANSFER_CONFIG.uploadConcurrency = v;
         e.target.value = v;
         showToast(`上传并发数已设为 ${v}`);
@@ -2683,7 +2729,8 @@ class WinFileExplorer extends HTMLElement {
     const inTrash = this.currentView === 'trash';
     this.ribbon.setActionStates({
       hasSelection: size > 0 && !inTrash,
-      hasSingle: size === 1 && !inTrash
+      hasSingle: size === 1 && !inTrash,
+      hasClipboard: !!clipboard.mode && clipboard.paths.length > 0 && !inTrash
     });
   }
 
@@ -2915,12 +2962,16 @@ class WinFileExplorer extends HTMLElement {
         if (inTrash) return showToast("回收站中的项无法复制", true);
         if (!selected.length) return showToast("请先选择要复制的项", true);
         clipboard.mode = 'copy'; clipboard.paths = [...selected];
+        this.mainview.clearCutPaths(); // 复制不标记半透明
+        this._updateToolbarState();
         showToast(`已复制 ${selected.length} 项到剪贴板`);
       }
       else if (action === 'cut') {
         if (inTrash) return showToast("回收站中的项无法剪切", true);
         if (!selected.length) return showToast("请先选择要剪切的项", true);
         clipboard.mode = 'cut'; clipboard.paths = [...selected];
+        this.mainview.setCutPaths(clipboard.paths); // 剪切源文件半透明
+        this._updateToolbarState();
         showToast(`已剪切 ${selected.length} 项到剪贴板`);
       }
       else if (action === 'paste') {
@@ -2936,6 +2987,8 @@ class WinFileExplorer extends HTMLElement {
           await API.moveItem(clipboard.paths, this.currentPath);
           showToast(`已移动 ${cnt} 项到当前目录`);
           clipboard.mode = null; clipboard.paths = [];
+          this.mainview.clearCutPaths(); // 粘贴完成，清除剪切状态
+          this._updateToolbarState();
           this.rebuildTree();
           this.loadPath(this.currentPath, true);
         }
@@ -2943,6 +2996,12 @@ class WinFileExplorer extends HTMLElement {
       else if (action === 'undo') {
         await API.undo();
         showToast("已撤销上一步操作");
+        // 撤销后，如果剪贴板是剪切状态，也一并清空（对齐 explorer 行为）
+        if (clipboard.mode === 'cut') {
+          clipboard.mode = null; clipboard.paths = [];
+          this.mainview.clearCutPaths();
+          this._updateToolbarState();
+        }
         this.rebuildTree();
         if (inTrash) this.loadTrash(); else this.loadPath(this.currentPath, true);
         this.refreshTrashBadge();
@@ -2958,6 +3017,16 @@ class WinFileExplorer extends HTMLElement {
           } else {
             await API.deleteItems(selected);
             if (selected.some(p => this.currentPath === p || this.currentPath.startsWith(p + '/'))) this.currentPath = this.storageMode === 'disk' ? '' : 'C:';
+            // 删除的项若在剪切中，从 cutPaths 移除
+            if (clipboard.mode === 'cut') {
+              const deleted = new Set(selected);
+              const remaining = clipboard.paths.filter(p => !deleted.has(p));
+              if (remaining.length !== clipboard.paths.length) {
+                clipboard.paths = remaining;
+                this.mainview.setCutPaths(remaining);
+                this._updateToolbarState();
+              }
+            }
             this.rebuildTree();
             this.loadPath(this.currentPath, true);
             showToast(`已删除 ${selected.length} 项到回收站`);
@@ -2993,6 +3062,12 @@ class WinFileExplorer extends HTMLElement {
         const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/')) || (this.storageMode === 'disk' ? '' : 'C:');
         if (this.currentPath === oldPath) this.currentPath = normalizePath(parentPath, newName);
         else if (this.currentPath.startsWith(oldPath + '/')) this.currentPath = this.currentPath.replace(oldPath, normalizePath(parentPath, newName));
+        // 重命名的项若在剪切中，同步更新 cutPaths 中的路径
+        if (clipboard.mode === 'cut' && clipboard.paths.includes(oldPath)) {
+          const newPath = normalizePath(parentPath, newName);
+          clipboard.paths = clipboard.paths.map(p => p === oldPath ? newPath : p);
+          this.mainview.setCutPaths(clipboard.paths);
+        }
         this.rebuildTree();
         this.loadPath(this.currentPath, true);
       }

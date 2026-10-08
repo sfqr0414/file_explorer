@@ -27,11 +27,14 @@ const (
 var STORAGE_MODE = ModeDisk
 
 const (
-	CHUNK_SIZE     = 4 * 1024 * 1024
+	// v15.2: 上传分片大小对齐前端的 8MB，减少 HTTP 往返
+	CHUNK_SIZE     = 8 * 1024 * 1024
 	TRASH_ROOT     = "$TRASH"
 	DISK_TRASH_DIR = ".file_explorer_trash"
 	ZIP_TMP_DIR    = ".file_explorer_zips"
 	UPLOAD_TMP_DIR = ".file_explorer_uploads"
+	// 合并上传分片时的并行度（对 SSD 有明显帮助）
+	MERGE_CONCURRENCY = 4
 )
 
 type Node struct {
@@ -1729,6 +1732,8 @@ func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
 	uploadMu.Unlock()
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
+
+// v15.2: 上传完成 —— 使用并行 pwrite 合并分片，对 SSD 有明显提速
 func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UploadID string `json:"uploadId"`
@@ -1746,7 +1751,7 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	dstPath := normalizePath(task.ParentPath, task.Name)
 	dstAbs := toOSPath(dstPath)
-	out, err := os.Create(dstAbs)
+	out, err := os.OpenFile(dstAbs, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		writeError(w, 500, "无法写入目标: "+err.Error())
 		return
@@ -1755,17 +1760,38 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	if totalChunks == 0 {
 		totalChunks = 1
 	}
+	// 并行读取分片并 WriteAt 定位写入（对 SSD 提速明显；HDD 上亦可受益于读写重叠）
+	var wg sync.WaitGroup
+	errCh := make(chan error, totalChunks)
+	sem := make(chan struct{}, MERGE_CONCURRENCY)
 	for i := 0; i < totalChunks; i++ {
-		cp := filepath.Join(task.TempDir, fmt.Sprintf("chunk_%d", i))
-		cf, err := os.Open(cp)
-		if err != nil {
-			out.Close()
-			os.Remove(dstAbs)
-			writeError(w, 400, fmt.Sprintf("分片 %d 缺失", i))
-			return
-		}
-		io.Copy(out, cf)
-		cf.Close()
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(idx int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			cp := filepath.Join(task.TempDir, fmt.Sprintf("chunk_%d", idx))
+			data, err := os.ReadFile(cp)
+			if err != nil {
+				errCh <- fmt.Errorf("分片 %d 缺失: %w", idx, err)
+				return
+			}
+			offset := int64(idx) * CHUNK_SIZE
+			if _, err := out.WriteAt(data, offset); err != nil {
+				errCh <- err
+				return
+			}
+			// 立即删除已合并分片，降低临时目录压力
+			os.Remove(cp)
+		}(i)
+	}
+	wg.Wait()
+	close(errCh)
+	if err := <-errCh; err != nil {
+		out.Close()
+		os.Remove(dstAbs)
+		writeError(w, 400, err.Error())
+		return
 	}
 	out.Close()
 	if task.SHA256 != "" {
