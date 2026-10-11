@@ -1733,10 +1733,12 @@ func handleUploadChunk(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
-// v15.2: 上传完成 —— 使用并行 pwrite 合并分片，对 SSD 有明显提速
+// v15.2: 上传完成 —— 并行 pwrite 合并分片；SHA-256 由 complete 请求体传入
+// （前端 hash 与上传并行，init 时未知，complete 时补上做完整性校验）
 func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UploadID string `json:"uploadId"`
+		SHA256   string `json:"sha256"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, 400, "无效请求")
@@ -1760,7 +1762,7 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	if totalChunks == 0 {
 		totalChunks = 1
 	}
-	// 并行读取分片并 WriteAt 定位写入（对 SSD 提速明显；HDD 上亦可受益于读写重叠）
+	// 并行读取分片并 WriteAt 定位写入
 	var wg sync.WaitGroup
 	errCh := make(chan error, totalChunks)
 	sem := make(chan struct{}, MERGE_CONCURRENCY)
@@ -1781,7 +1783,6 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 				errCh <- err
 				return
 			}
-			// 立即删除已合并分片，降低临时目录压力
 			os.Remove(cp)
 		}(i)
 	}
@@ -1794,9 +1795,15 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out.Close()
-	if task.SHA256 != "" {
+
+	// 用 complete 请求体传入的 sha 校验；若为空则用 init 时存的（向后兼容）
+	expectedSha := req.SHA256
+	if expectedSha == "" {
+		expectedSha = task.SHA256
+	}
+	if expectedSha != "" {
 		actualSha, _ := sha256File(dstAbs)
-		if actualSha != task.SHA256 {
+		if actualSha != expectedSha {
 			os.Remove(dstAbs)
 			writeError(w, 400, "SHA-256 校验失败")
 			return
