@@ -131,11 +131,29 @@
     }
     .modal-overlay.active .modal-box { transform: scale(1); }
     .modal-box.large { width: 800px; height: 600px; }
+    /* modal-header：标题允许多行换行完整显示文件名；关闭按钮始终固定右侧 */
     .modal-header {
       padding: 14px 18px;
-      display: flex; justify-content: space-between; align-items: center;
-      font-weight: 600; font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      font-weight: 600;
+      font-size: 14px;
       border-bottom: 1px solid var(--border);
+      gap: 12px;
+      min-width: 0;
+    }
+    .modal-header > span:first-child {
+      flex: 1;
+      min-width: 0;
+      white-space: normal;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      line-height: 1.4;
+    }
+    .modal-header .modal-close {
+      flex-shrink: 0;
+      margin-top: -2px;
     }
     .modal-close {
       cursor: pointer;
@@ -288,7 +306,6 @@
     .task-progress-bar.hash { background: #ca8a04; }
     .task-progress-bar.err { background: var(--destructive); }
     .task-progress-bar.ok { background: #16a34a; }
-    /* meta 行：左侧信息可截断，右侧速度/哈希固定右对齐 */
     .task-meta-row {
       display: flex;
       justify-content: space-between;
@@ -557,7 +574,6 @@ function _shaWorkerContent() {
       if (!file) { port.postMessage({ ok: true, hash: '' }); return; }
       if (file.size === 0) { port.postMessage({ ok: true, hash: '' }); return; }
 
-      // 流式路径：分块读 + 增量哈希，内存占用恒定
       if (_hasherReady && typeof file.slice === 'function') {
         const hasher = await hashwasm.createSHA256();
         hasher.init();
@@ -575,7 +591,6 @@ function _shaWorkerContent() {
         return;
       }
 
-      // 回退路径：小文件一次性读
       if (typeof file.arrayBuffer !== 'function') { port.postMessage({ ok: true, hash: '' }); return; }
       if (file.size > 200 * 1024 * 1024) { port.postMessage({ ok: true, hash: '' }); return; }
       const buf = await file.arrayBuffer();
@@ -635,7 +650,6 @@ const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8080' 
 axios.defaults.baseURL = API_BASE;
 axios.defaults.timeout = 0;
 axios.interceptors.response.use(res => res, err => {
-  // 取消的请求不要弹 toast
   if (axios.isCancel?.(err) || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') {
     return Promise.reject(err);
   }
@@ -682,14 +696,10 @@ const API = {
 };
 
 // =================== 上传管理器（DOM 复用版） ===================
-// 关键点：
-//   1. 每个 task 的 DOM 节点创建一次，永不替换 → click 事件 100% 可靠
-//   2. 只更新变化的字段（textContent / style / className）
-//   3. 速度 tick 只改一个 .task-meta-right 的文本，不触发 render
 class UploadManager {
   constructor() {
     this.tasks = [];
-    this._taskEls = new Map();   // taskId -> HTMLElement
+    this._taskEls = new Map();
     this.panel = document.getElementById('upload-panel');
     this.list = document.getElementById('upload-list');
     this.badge = null;
@@ -701,7 +711,6 @@ class UploadManager {
     if (this.clearBtn) this.clearBtn.addEventListener('click', (e) => { e.stopPropagation(); this.clearCompleted(); });
     if (this.closeBtn) this.closeBtn.addEventListener('click', () => this.panel.classList.remove('show'));
 
-    // 事件委托：list 本身不被替换，监听器一直有效
     this.list.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-act]');
       if (!btn) return;
@@ -737,18 +746,15 @@ class UploadManager {
   async _run(task) {
     this._ensureSpeedTimer();
     try {
-      // ===== 1. hash 并行启动（不阻塞上传）=====
+      // 1. hash 并行（不阻塞上传）
       const hashPromise = computeFileSha256(task.file, (p) => {
         task.hashProgress = p;
         this._updateTask(task.id);
       }).catch(() => '');
 
-      // ===== 2. 立即 init（sha 传空，complete 时再补）=====
+      // 2. init
       const init = await API.uploadInit({
-        name: task.name,
-        size: task.size,
-        sha256: '',
-        parentPath: task.parentPath,
+        name: task.name, size: task.size, sha256: '', parentPath: task.parentPath,
       });
       task.uploadId = init.uploadId;
 
@@ -763,7 +769,6 @@ class UploadManager {
       task.totalChunks = total;
       task.uploadedCount = init.uploadedChunks.length;
 
-      // 已上传字节数（含断点续传的）
       task.uploadedBytes = 0;
       for (const idx of init.uploadedChunks) {
         const s = idx * chunkSize;
@@ -774,7 +779,7 @@ class UploadManager {
       task.progress = Math.round((task.uploadedCount / total) * 100);
       this._updateTask(task.id);
 
-      // ===== 3. 分片上传：queue + 并发 worker + AbortController =====
+      // 3. 分片上传
       const queue = [];
       for (let i = 0; i < total; i++) {
         if (!task.uploadedChunks.has(i)) queue.push(i);
@@ -794,14 +799,11 @@ class UploadManager {
           const start = idx * chunkSize;
           const end = Math.min(start + chunkSize, task.size);
           const blob = task.file.slice(start, end);
-
-          // 每轮取最新的 controller（resume 后会重建）
           const signal = task.abortController ? task.abortController.signal : undefined;
 
           try {
             await API.uploadChunk(task.uploadId, idx, blob, signal);
           } catch (err) {
-            // 不依赖错误类型；只要当前处于 paused / cancelled 状态就视为可恢复
             if (task.paused || task.cancelled) {
               queue.unshift(idx);
               if (task.cancelled) throw new Error('__CANCELLED__');
@@ -822,7 +824,7 @@ class UploadManager {
       for (let i = 0; i < concurrency; i++) workers.push(worker());
       await Promise.all(workers);
 
-      // ===== 4. 等 hash 完成，complete 时带上 sha =====
+      // 4. complete
       task.status = 'finalizing';
       this._updateTask(task.id);
       task.sha = await hashPromise;
@@ -858,10 +860,7 @@ class UploadManager {
     t.paused = true;
     t.statusBeforePause = t.status;
     t.status = 'paused';
-    // 掐断所有进行中的 HTTP 请求
-    if (t.abortController) {
-      try { t.abortController.abort(); } catch (_) {}
-    }
+    if (t.abortController) { try { t.abortController.abort(); } catch (_) {} }
     this._updateTask(id);
   }
 
@@ -871,7 +870,6 @@ class UploadManager {
     if (t.status !== 'paused') return;
     t.paused = false;
     t.status = t.statusBeforePause || 'uploading';
-    // 重建 controller（旧的被 abort 后永久失效）
     t.abortController = new AbortController();
     this._ensureSpeedTimer();
     this._updateTask(id);
@@ -883,9 +881,7 @@ class UploadManager {
     if (['completed', 'error', 'cancelled'].includes(t.status)) { this.removeTask(id); return; }
     t.cancelled = true;
     t.paused = false;
-    if (t.abortController) {
-      try { t.abortController.abort(); } catch (_) {}
-    }
+    if (t.abortController) { try { t.abortController.abort(); } catch (_) {} }
     this._updateTask(id);
   }
 
@@ -926,7 +922,6 @@ class UploadManager {
     else badgeEl.classList.remove('show');
   }
 
-  // ---- 速度采样 ----
   _ensureSpeedTimer() {
     const hasActive = this.tasks.some(t => t.status === 'uploading');
     if (hasActive && !this._speedTimer) {
@@ -948,7 +943,6 @@ class UploadManager {
       const cutoff = now - 5000;
       while (t.bytesHistory.length > 1 && t.bytesHistory[0].t < cutoff) t.bytesHistory.shift();
 
-      // 只更新速度那一栏，不重建整条 task DOM
       const el = this._taskEls.get(t.id);
       if (el) {
         const metaRight = el.querySelector('.task-meta-right');
@@ -976,7 +970,6 @@ class UploadManager {
     return dBytes / dt;
   }
 
-  // ---- 渲染 ----
   _renderEmpty() {
     this.list.innerHTML = `<div style="padding:24px 12px;text-align:center;color:var(--muted-foreground);font-size:12px;">暂无上传任务</div>`;
   }
@@ -1016,14 +1009,11 @@ class UploadManager {
   }
 
   _updateTaskEl(el, task) {
-    // 名称
     const nameEl = el.querySelector('.task-item-name');
     if (nameEl.textContent !== task.name) nameEl.textContent = task.name;
     if (nameEl.title !== task.name) nameEl.title = task.name;
 
-    // 状态文字
     let statusText = '', statusClass = '';
-    const isActive = task.status === 'uploading';
     switch (task.status) {
       case 'uploading': statusText = Math.floor(task.progress) + '%'; break;
       case 'finalizing': statusText = '合并中'; statusClass = 'warn'; break;
@@ -1037,7 +1027,6 @@ class UploadManager {
     const newStatusCls = 'task-item-status' + (statusClass ? ' ' + statusClass : '');
     if (statusEl.className !== newStatusCls) statusEl.className = newStatusCls;
 
-    // 按钮显隐
     const canPause = task.status === 'uploading';
     const canResume = task.status === 'paused';
     const canCancel = canPause || canResume;
@@ -1052,7 +1041,6 @@ class UploadManager {
     setBtnDisplay('.act-cancel', canCancel);
     setBtnDisplay('.act-remove', canRemove);
 
-    // 进度条
     const barEl = el.querySelector('.task-progress-bar');
     let barClass = '';
     if (task.status === 'error') barClass = 'err';
@@ -1063,14 +1051,12 @@ class UploadManager {
     const newWidth = Math.max(0, Math.min(100, task.progress || 0)) + '%';
     if (barEl.style.width !== newWidth) barEl.style.width = newWidth;
 
-    // 左侧 meta
     const metaLeft = el.querySelector('.task-meta-left');
     const leftParts = [formatBytes(task.size), task.parentPath];
     if (task.totalChunks) leftParts.push(task.uploadedCount + '/' + task.totalChunks);
     const leftText = leftParts.join(' · ');
     if (metaLeft.textContent !== leftText) metaLeft.textContent = leftText;
 
-    // 右侧 meta（速度 + 哈希进度）
     const metaRight = el.querySelector('.task-meta-right');
     const rightText = this._formatRightMeta(task);
     if (metaRight.textContent !== rightText) metaRight.textContent = rightText;
@@ -1081,7 +1067,6 @@ class UploadManager {
     if (!t) return;
     let el = this._taskEls.get(taskId);
     if (!el || !el.isConnected) {
-      // 节点不存在（比如首次添加），交给 render 处理
       this.render();
       return;
     }
@@ -1096,20 +1081,16 @@ class UploadManager {
       if (this.list.children.length !== 1 || !this.list.querySelector('div[style*="暂无上传任务"]')) {
         this._renderEmpty();
       }
-      // 清掉遗留的映射
       for (const [, el] of this._taskEls) el.remove();
       this._taskEls.clear();
       return;
     }
 
-    // 清掉空状态提示
     if (this.list.children.length === 1 && this.list.firstElementChild && !this.list.firstElementChild.dataset.taskId) {
       this.list.innerHTML = '';
     }
 
     const validIds = new Set();
-
-    // 反向遍历确保 tasks[0] 显示在最顶部
     for (let i = this.tasks.length - 1; i >= 0; i--) {
       const t = this.tasks[i];
       validIds.add(t.id);
@@ -1120,12 +1101,9 @@ class UploadManager {
         this._taskEls.set(t.id, el);
       }
       this._updateTaskEl(el, t);
-      // insertBefore(el, firstChild)：把 el 移到 list 首位
-      // 如果 el 已经在首位则无操作
       this.list.insertBefore(el, this.list.firstChild);
     }
 
-    // 移除已不在 tasks 里的节点
     for (const [id, el] of Array.from(this._taskEls)) {
       if (!validIds.has(id)) {
         el.remove();
@@ -1606,7 +1584,6 @@ class FMMainView extends HTMLElement {
       .grid-item.drag-over .grid-content { outline-color: var(--marquee-border); background: var(--muted); }
       .grid-content .icon { width: 42px; height: 50px; margin-bottom: 8px; display: inline-flex; align-items: center; justify-content: center; transition: opacity 0.15s; }
       .grid-content .text { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; padding: 0 2px; box-sizing: border-box; color: var(--foreground); }
-      /* marquee 用 fixed 定位，脱离文档流，不参与 scrollHeight 计算 */
       .marquee { position: fixed; border: 1px solid var(--marquee-border); background: var(--marquee-bg); border-radius: 2px; pointer-events: none; display: none; z-index: 100; }
       .skeleton { position: absolute; inset: 0; background: var(--background); z-index: 50; display: none; padding: 16px; box-sizing: border-box; }
       .skeleton.active { display: block; }
@@ -2432,7 +2409,13 @@ class WinFileExplorer extends HTMLElement {
       }
     }
   }
-  navigate(path, isHistoryTravel = false) { this.currentView = 'explorer'; this.trashBtn.classList.remove('active'); this._searchKeyword = ''; this.loadPath(path, isHistoryTravel); }
+  navigate(path, isHistoryTravel = false) {
+    this.currentView = 'explorer';
+    this.trashBtn.classList.remove('active');
+    this._searchKeyword = '';
+    this.mainview.searchKeyword = '';
+    this.loadPath(path, isHistoryTravel);
+  }
   goBack() { if (this.currentView === 'trash') { this.navigate(this.history[this.historyIndex] || ''); return; } if (this.historyIndex > 0) { this.historyIndex--; this.loadPath(this.history[this.historyIndex], true); } }
   goForward() { if (this.currentView === 'trash') return; if (this.historyIndex < this.history.length - 1) { this.historyIndex++; this.loadPath(this.history[this.historyIndex], true); } }
   goUp() {
@@ -2451,6 +2434,9 @@ class WinFileExplorer extends HTMLElement {
   async loadPath(path, isHistoryTravel = false) {
     try {
       this.mainview.setLoading(true);
+      // 关键：进入任何目录都清空搜索关键字，避免残留导致列表为空
+      this._searchKeyword = '';
+      this.mainview.searchKeyword = '';
       const ancestors = await API.getAncestors(path);
       const items = await API.getFolderContents(path);
       this.currentView = 'explorer';
