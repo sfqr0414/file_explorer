@@ -131,7 +131,6 @@
     }
     .modal-overlay.active .modal-box { transform: scale(1); }
     .modal-box.large { width: 800px; height: 600px; }
-    /* modal-header：标题允许多行换行完整显示文件名；关闭按钮始终固定右侧 */
     .modal-header {
       padding: 14px 18px;
       display: flex;
@@ -1304,6 +1303,73 @@ class FMRibbon extends HTMLElement {
         .checkbox-btn:hover { background: var(--muted); }
         .checkbox-btn input { cursor: pointer; accent-color: var(--primary); width: 13px; height: 13px; margin: 0; }
         .checkbox-btn svg { width: 14px; height: 14px; }
+
+        /* ====== 上传按钮 + 下拉 ====== */
+        .upload-wrap { position: relative; display: inline-flex; }
+
+        /* 上传按钮保持标准 large 布局；为右上角的小箭头留出右侧空间 */
+        .upload-wrap .ribbon-btn.large#upload-btn {
+          position: relative;
+          padding-right: 22px;   /* 给右上角箭头留位 */
+        }
+
+        /* 下拉箭头固定在按钮右上角 */
+        .upload-wrap .ribbon-btn.large#upload-btn .upload-caret {
+          position: absolute;
+          right: 4px;
+          top: 4px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--muted-foreground);
+          pointer-events: none;
+        }
+        .upload-wrap .ribbon-btn.large#upload-btn .upload-caret svg {
+          width: 11px;
+          height: 11px;
+        }
+        .upload-wrap .ribbon-btn.active { background: var(--muted); }
+
+        /* 下拉菜单：fixed 定位，脱离 .ribbon-body 的 overflow 上下文 */
+        .upload-dropdown {
+          position: fixed;
+          background: var(--background);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: 0 10px 28px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06);
+          padding: 4px;
+          min-width: 110px;
+          z-index: 99999;
+          display: none;
+          flex-direction: column;
+          gap: 2px;
+          box-sizing: border-box;
+        }
+        .upload-dropdown.show { display: flex; animation: ddIn 0.14s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes ddIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        .upload-dropdown-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 7px 12px;
+          border-radius: var(--radius-sm);
+          font-size: 13px;
+          color: var(--foreground);
+          cursor: pointer;
+          user-select: none;
+          transition: background 0.08s;
+          white-space: nowrap;
+        }
+        .upload-dropdown-item svg {
+          width: 14px;
+          height: 14px;
+          color: var(--muted-foreground);
+          flex-shrink: 0;
+        }
+        .upload-dropdown-item:hover { background: var(--muted); }
+        .upload-dropdown-item:hover svg { color: var(--foreground); }
+        .upload-dropdown-item:active { background: var(--border); }
+
         @media (max-width: 768px) {
           .ribbon-header { height: 30px; padding: 0 6px; }
           .tab { padding: 0 10px; font-size: 12px; }
@@ -1341,7 +1407,21 @@ class FMRibbon extends HTMLElement {
         <div class="ribbon-group">
           <div class="ribbon-group-content">
             <button class="ribbon-btn large" data-action="download" id="download-btn" data-req="selection" title="下载（目录自动打包为 ZIP）">${icon('download', 20)}<span>下载</span></button>
-            <button class="ribbon-btn large" data-action="upload" title="上传文件">${icon('upload', 20)}<span>上传</span></button>
+            <div class="upload-wrap">
+              <button class="ribbon-btn large" id="upload-btn" title="上传（可选文件或目录）">
+                ${icon('upload', 20)}
+                <span>上传</span>
+                <span class="upload-caret">${icon('chevronDown', 11)}</span>
+              </button>
+              <div class="upload-dropdown" id="upload-dropdown">
+                <div class="upload-dropdown-item" data-upload-mode="folder">
+                  ${icon('folder', 14)}<span>目录</span>
+                </div>
+                <div class="upload-dropdown-item" data-upload-mode="file">
+                  ${icon('file', 14)}<span>文件</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="ribbon-group-label">传输</div>
         </div>
@@ -1372,12 +1452,62 @@ class FMRibbon extends HTMLElement {
           <div class="ribbon-group-label">显示</div>
         </div>
       </div>`;
+
+    // 通用 action 按钮（不含 upload-btn）
     this.shadowRoot.querySelectorAll('button[data-action]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.disabled) return;
         this.dispatchEvent(new CustomEvent('action', { detail: btn.dataset.action, bubbles: true, composed: true }));
       });
     });
+
+    // 上传按钮 + 下拉
+    const uploadBtn = this.shadowRoot.getElementById('upload-btn');
+    const uploadDropdown = this.shadowRoot.getElementById('upload-dropdown');
+    const uploadWrap = this.shadowRoot.querySelector('.upload-wrap');
+
+    const positionDropdown = () => {
+      const r = uploadBtn.getBoundingClientRect();
+      uploadDropdown.style.top = (r.bottom + 4) + 'px';
+      uploadDropdown.style.left = r.left + 'px';
+    };
+
+    const closeDropdown = () => {
+      uploadDropdown.classList.remove('show');
+      uploadBtn.classList.remove('active');
+    };
+
+    uploadBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = uploadDropdown.classList.contains('show');
+      if (isOpen) {
+        closeDropdown();
+      } else {
+        positionDropdown();
+        uploadDropdown.classList.add('show');
+        uploadBtn.classList.add('active');
+      }
+    });
+
+    uploadDropdown.querySelectorAll('.upload-dropdown-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const mode = item.dataset.uploadMode;
+        closeDropdown();
+        this.dispatchEvent(new CustomEvent('upload-mode', { detail: mode, bubbles: true, composed: true }));
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.composedPath().includes(uploadWrap) && !e.composedPath().includes(uploadDropdown)) {
+        closeDropdown();
+      }
+    });
+    window.addEventListener('resize', () => closeDropdown());
+    this.shadowRoot.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeDropdown();
+    });
+
     const hiddenCb = this.shadowRoot.getElementById('show-hidden-cb');
     hiddenCb.addEventListener('change', (e) => {
       e.stopPropagation();
@@ -2188,6 +2318,7 @@ class WinFileExplorer extends HTMLElement {
       <fm-statusbar id="statusbar"></fm-statusbar>
       <fm-context-menu id="contextmenu"></fm-context-menu>
       <input type="file" id="hidden-file-input" multiple style="display:none">
+      <input type="file" id="hidden-dir-input" webkitdirectory directory multiple style="display:none">
     `;
     this.mainview = this.shadowRoot.getElementById('mainview');
     this.addressbar = this.shadowRoot.getElementById('addressbar');
@@ -2202,6 +2333,7 @@ class WinFileExplorer extends HTMLElement {
     this.dropOverlay = this.shadowRoot.getElementById('drop-overlay');
     this.dropText = this.shadowRoot.getElementById('drop-text');
     this.hiddenFileInput = this.shadowRoot.getElementById('hidden-file-input');
+    this.hiddenDirInput = this.shadowRoot.getElementById('hidden-dir-input');
     this.sidebarScroll = this.shadowRoot.querySelector('.sidebar-scroll');
     this.sidebarEl = this.shadowRoot.getElementById('sidebar');
     this.sidebarOverlay = this.shadowRoot.getElementById('sidebar-overlay');
@@ -2222,6 +2354,15 @@ class WinFileExplorer extends HTMLElement {
     this.addEventListener('nav-up', () => this.goUp());
     this.addEventListener('toggle-sidebar', () => this._toggleSidebar());
     this.addEventListener('action', (e) => this.handleAction(e.detail));
+
+    this.addEventListener('upload-mode', (e) => {
+      const mode = e.detail;
+      if (this.currentView === 'trash') return showToast("回收站中无法上传", true);
+      if (this.currentPath === '') return showToast("请进入具体目录后再上传", true);
+      if (mode === 'folder') this.hiddenDirInput.click();
+      else this.hiddenFileInput.click();
+    });
+
     this.addEventListener('search', (e) => {
       const keyword = e.detail;
       this._searchKeyword = keyword;
@@ -2256,14 +2397,31 @@ class WinFileExplorer extends HTMLElement {
     window.addEventListener('upload-complete', (e) => {
       if (e.detail.parentPath === this.currentPath) this.loadPath(this.currentPath, true);
     });
+
     this.hiddenFileInput.addEventListener('change', (e) => {
       const files = Array.from(e.target.files || []);
       if (files.length > 0) {
-        if (this.currentPath === '') return showToast("请进入具体目录后再上传", true);
+        if (this.currentPath === '') {
+          e.target.value = '';
+          return showToast("请进入具体目录后再上传", true);
+        }
         files.forEach(f => uploadManager.add(f, this.currentPath));
       }
       e.target.value = '';
     });
+
+    this.hiddenDirInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files || []);
+      e.target.value = '';
+      if (files.length === 0) return;
+      if (this.currentPath === '') return showToast("请进入具体目录后再上传", true);
+      const filesWithPath = files.map(f => ({
+        file: f,
+        relativePath: f.webkitRelativePath || f.name,
+      }));
+      await this._handleFilesWithRelPaths(filesWithPath);
+    });
+
     this._setupDragUpload();
     this.sidebarOverlay.addEventListener('click', () => this._closeSidebar());
     document.addEventListener('keydown', (e) => {
@@ -2320,7 +2478,6 @@ class WinFileExplorer extends HTMLElement {
   _toggleSidebar() { this._sidebarOpen = !this._sidebarOpen; this.sidebarEl.classList.toggle('open', this._sidebarOpen); this.sidebarOverlay.classList.toggle('active', this._sidebarOpen); }
   _closeSidebar() { this._sidebarOpen = false; this.sidebarEl.classList.remove('open'); this.sidebarOverlay.classList.remove('active'); }
 
-  // ============== 拖拽上传（含目录递归） ==============
   _setupDragUpload() {
     const mc = this.mainContentEl;
     let dragCounter = 0;
@@ -2341,8 +2498,6 @@ class WinFileExplorer extends HTMLElement {
       this.dropOverlay.classList.remove('active');
       if (this.currentPath === '') return showToast("请进入具体目录后再上传", true);
 
-      // ⚠️ 关键：必须在事件同步阶段调用 webkitGetAsEntry()，
-      // 一旦 await，dataTransfer.items 就失效了。
       const items = Array.from(e.dataTransfer?.items || []);
       const entries = [];
       for (const it of items) {
@@ -2351,7 +2506,6 @@ class WinFileExplorer extends HTMLElement {
         if (entry) entries.push(entry);
       }
 
-      // 环境不支持 webkitGetAsEntry（旧 Firefox）时回退到只处理文件
       if (entries.length === 0) {
         const files = Array.from(e.dataTransfer?.files || []);
         if (files.length === 0) return;
@@ -2359,17 +2513,12 @@ class WinFileExplorer extends HTMLElement {
         return;
       }
 
-      // 异步递归遍历
       await this._handleDroppedEntries(entries);
     });
   }
 
-  // 递归遍历用户拖入的 entries → 创建缺失目录 → 逐个加入上传队列
   async _handleDroppedEntries(entries) {
-    const rootPath = this.currentPath;
     showToast('正在扫描拖入的内容…');
-
-    // 1. 递归收集 { file, relativePath }
     const collected = [];
     for (const entry of entries) {
       try { await _readEntriesRecursive(entry, entry.name, collected); }
@@ -2379,12 +2528,17 @@ class WinFileExplorer extends HTMLElement {
       showToast('未找到可上传的文件', true);
       return;
     }
+    await this._handleFilesWithRelPaths(collected);
+  }
 
-    // 2. 收集所有需要创建的目录（相对 rootPath）
+  async _handleFilesWithRelPaths(filesWithPath) {
+    const rootPath = this.currentPath;
+    if (filesWithPath.length === 0) return;
+
     const dirSet = new Set();
-    for (const { relativePath } of collected) {
+    for (const { relativePath } of filesWithPath) {
       const parts = relativePath.split('/');
-      parts.pop();                       // 去掉文件名
+      parts.pop();
       let cur = '';
       for (const p of parts) {
         cur = cur ? (cur + '/' + p) : p;
@@ -2392,7 +2546,6 @@ class WinFileExplorer extends HTMLElement {
       }
     }
 
-    // 3. 按深度递增的顺序创建目录（父先于子）
     const dirs = Array.from(dirSet).sort((a, b) => {
       const da = a.split('/').length;
       const db = b.split('/').length;
@@ -2404,19 +2557,17 @@ class WinFileExplorer extends HTMLElement {
       const dirName = lastSlash >= 0 ? relDir.substring(lastSlash + 1) : relDir;
       const parentAbs = joinParentPath(rootPath, parentRel);
       try { await API.createItem(parentAbs, 'folder', dirName); }
-      catch (_) { /* 已存在或其它错误，忽略 */ }
+      catch (_) {}
     }
 
-    // 4. 逐个文件按相对父目录加入上传队列
-    for (const { file, relativePath } of collected) {
+    for (const { file, relativePath } of filesWithPath) {
       const lastSlash = relativePath.lastIndexOf('/');
       const parentRel = lastSlash >= 0 ? relativePath.substring(0, lastSlash) : '';
       const parentAbs = joinParentPath(rootPath, parentRel);
       uploadManager.add(file, parentAbs);
     }
 
-    showToast(`已加入 ${collected.length} 个文件到上传队列`);
-    // 刷新当前目录，让新建的目录立刻可见
+    showToast(`已加入 ${filesWithPath.length} 个文件到上传队列`);
     if (dirs.length > 0) {
       this.rebuildTree();
       this.loadPath(this.currentPath, true);
