@@ -1753,6 +1753,11 @@ func handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	dstPath := normalizePath(task.ParentPath, task.Name)
 	dstAbs := toOSPath(dstPath)
+	// 父目录可能还没建好（并发上传/建目录时序），这里兜底创建，避免写入失败
+	if err := os.MkdirAll(filepath.Dir(dstAbs), 0755); err != nil {
+		writeError(w, 500, "无法创建目标目录: "+err.Error())
+		return
+	}
 	out, err := os.OpenFile(dstAbs, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		writeError(w, 500, "无法写入目标: "+err.Error())

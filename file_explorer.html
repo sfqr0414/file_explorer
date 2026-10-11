@@ -555,6 +555,11 @@ const showToast = (msg, isError = false) => {
 };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// 合帧调度：同一 tick 内的多次渲染请求合并成一次，避免批量入队时主线程被独占
+function _scheduleRender(fn) {
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn());
+  else setTimeout(fn, 0);
+}
 
 // ============ 拼接父路径：空 root 时不会出现额外斜杠 ============
 const joinParentPath = (root, rel) => {
@@ -735,11 +740,14 @@ class UploadManager {
   constructor() {
     this.tasks = [];
     this._taskEls = new Map();
+    this._byId = new Map();  // id -> task，避免每次进度回调都线性扫 tasks
     this.panel = document.getElementById('upload-panel');
     this.list = document.getElementById('upload-list');
     this.badge = null;
     this._speedTimer = null;
     this._speedTickMs = 500;
+    this._pendingTaskIds = new Set();
+    this._taskUpdateScheduled = false;
 
     this.clearBtn = document.getElementById('upload-clear');
     this.closeBtn = document.getElementById('upload-panel-close');
@@ -759,8 +767,37 @@ class UploadManager {
   }
 
   add(file, parentPath) {
+    this.addMany([{ file, parentPath }]);
+  }
+
+  // 批量入队：任务同步登记，渲染合并成一次，_run 统一让出主线程后各自启动（不设并发上限）
+  addMany(list) {
+    const batch = (list || []).filter(it => it && it.file);
+    if (batch.length === 0) return;
+    const queued = [];
+    for (const { file, parentPath } of batch) {
+      const task = this._createTask(file, parentPath);
+      this.tasks.unshift(task);
+      this._byId.set(task.id, task);
+      queued.push(task);
+    }
+    this._scheduleRender();
+    for (const task of queued) this._startRun(task);
+  }
+
+  // 让出一帧再启动，保证上传面板先画出来
+  _startRun(task) {
+    _scheduleRender(() => {
+      if (task.cancelled || task.paused) return;
+      task.status = 'uploading';
+      this._updateTask(task.id);
+      this._run(task);
+    });
+  }
+
+  _createTask(file, parentPath) {
     const now = Date.now();
-    const task = {
+    return {
       id: now + Math.random().toString(36).slice(2),
       file, name: file.name, size: file.size, parentPath,
       status: 'uploading',
@@ -772,10 +809,17 @@ class UploadManager {
       bytesHistory: [{ t: now, bytes: 0 }],
       abortController: new AbortController(),
     };
-    this.tasks.unshift(task);
-    this.render();
-    this.panel.classList.add('show');
-    this._run(task);
+  }
+
+  // 合并渲染 + 面板显隐，避免 N 个任务触发 N 次布局
+  _scheduleRender() {
+    if (this._renderQueued) return;
+    this._renderQueued = true;
+    _scheduleRender(() => {
+      this._renderQueued = false;
+      this.render();
+      if (this.tasks.length > 0) this.panel.classList.add('show');
+    });
   }
 
   async _run(task) {
@@ -783,7 +827,7 @@ class UploadManager {
     try {
       const hashPromise = computeFileSha256(task.file, (p) => {
         task.hashProgress = p;
-        this._updateTask(task.id);
+        this._scheduleTaskUpdate(task.id);
       }).catch(() => '');
 
       const init = await API.uploadInit({
@@ -885,7 +929,7 @@ class UploadManager {
   }
 
   pause(id) {
-    const t = this.tasks.find(x => x.id === id);
+    const t = this._byId.get(id);
     if (!t) return;
     if (t.status !== 'uploading') return;
     t.paused = true;
@@ -896,18 +940,17 @@ class UploadManager {
   }
 
   resume(id) {
-    const t = this.tasks.find(x => x.id === id);
+    const t = this._byId.get(id);
     if (!t) return;
     if (t.status !== 'paused') return;
     t.paused = false;
-    t.status = t.statusBeforePause || 'uploading';
     t.abortController = new AbortController();
-    this._ensureSpeedTimer();
+    this._startRun(t);
     this._updateTask(id);
   }
 
   cancel(id) {
-    const t = this.tasks.find(x => x.id === id);
+    const t = this._byId.get(id);
     if (!t) return;
     if (['completed', 'error', 'cancelled'].includes(t.status)) { this.removeTask(id); return; }
     t.cancelled = true;
@@ -918,13 +961,14 @@ class UploadManager {
 
   removeTask(id) {
     this.tasks = this.tasks.filter(t => t.id !== id);
+    this._byId.delete(id);
     const el = this._taskEls.get(id);
-    if (el) { el.remove(); this._taskEls.delete(id); }
+    if (el) { this._clearTaskRefs(el); el.remove(); this._taskEls.delete(id); }
     if (this.tasks.length === 0) {
       this.panel.classList.remove('show');
       this._renderEmpty();
     }
-    if (this.badge) this.updateBadge(this.badge);
+    this._refreshBadge();
   }
 
   clearCompleted() {
@@ -932,15 +976,16 @@ class UploadManager {
     const toRemove = this.tasks.filter(t => ['completed', 'error', 'cancelled'].includes(t.status));
     this.tasks = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status));
     for (const t of toRemove) {
+      this._byId.delete(t.id);
       const el = this._taskEls.get(t.id);
-      if (el) { el.remove(); this._taskEls.delete(t.id); }
+      if (el) { this._clearTaskRefs(el); el.remove(); this._taskEls.delete(t.id); }
     }
     const removed = before - this.tasks.length;
     if (this.tasks.length === 0) {
       this.panel.classList.remove('show');
       this._renderEmpty();
     }
-    if (this.badge) this.updateBadge(this.badge);
+    this._refreshBadge();
     if (removed > 0) showToast(`已清理 ${removed} 条记录`);
   }
 
@@ -949,6 +994,8 @@ class UploadManager {
   updateBadge(badgeEl) {
     if (!badgeEl) return;
     const active = this.tasks.filter(t => !['completed', 'error', 'cancelled'].includes(t.status)).length;
+    if (this._badgeActive === active) return;   // 值没变就不动 DOM
+    this._badgeActive = active;
     if (active > 0) { badgeEl.textContent = active; badgeEl.classList.add('show'); }
     else badgeEl.classList.remove('show');
   }
@@ -976,7 +1023,7 @@ class UploadManager {
 
       const el = this._taskEls.get(t.id);
       if (el) {
-        const metaRight = el.querySelector('.task-meta-right');
+        const metaRight = this._taskRefs(el).metaRight;
         if (metaRight) {
           const text = this._formatRightMeta(t);
           if (metaRight.textContent !== text) metaRight.textContent = text;
@@ -1039,8 +1086,29 @@ class UploadManager {
     return parts.join(' · ');
   }
 
+  // 行创建后子节点不再变化，首次查询后把引用挂在行元素上，避免每次更新重复 querySelector
+  _taskRefs(el) {
+    let r = el.__refs;
+    if (!r) {
+      r = el.__refs = {
+        name: el.querySelector('.task-item-name'),
+        status: el.querySelector('.task-item-status'),
+        pause: el.querySelector('.act-pause'),
+        resume: el.querySelector('.act-resume'),
+        cancel: el.querySelector('.act-cancel'),
+        remove: el.querySelector('.act-remove'),
+        bar: el.querySelector('.task-progress-bar'),
+        metaLeft: el.querySelector('.task-meta-left'),
+        metaRight: el.querySelector('.task-meta-right'),
+      };
+    }
+    return r;
+  }
+  _clearTaskRefs(el) { if (el) delete el.__refs; }
+
   _updateTaskEl(el, task) {
-    const nameEl = el.querySelector('.task-item-name');
+    const ref = this._taskRefs(el);
+    const nameEl = ref.name;
     if (nameEl.textContent !== task.name) nameEl.textContent = task.name;
     if (nameEl.title !== task.name) nameEl.title = task.name;
 
@@ -1053,7 +1121,7 @@ class UploadManager {
       case 'completed': statusText = '已完成'; statusClass = 'ok'; break;
       case 'error': statusText = '失败'; statusClass = 'err'; break;
     }
-    const statusEl = el.querySelector('.task-item-status');
+    const statusEl = ref.status;
     if (statusEl.textContent !== statusText) statusEl.textContent = statusText;
     const newStatusCls = 'task-item-status' + (statusClass ? ' ' + statusClass : '');
     if (statusEl.className !== newStatusCls) statusEl.className = newStatusCls;
@@ -1062,17 +1130,16 @@ class UploadManager {
     const canResume = task.status === 'paused';
     const canCancel = canPause || canResume;
     const canRemove = !canPause && !canResume;
-    const setBtnDisplay = (sel, show) => {
-      const btn = el.querySelector(sel);
+    const setBtnDisplay = (btn, show) => {
       const val = show ? '' : 'none';
       if (btn && btn.style.display !== val) btn.style.display = val;
     };
-    setBtnDisplay('.act-pause', canPause);
-    setBtnDisplay('.act-resume', canResume);
-    setBtnDisplay('.act-cancel', canCancel);
-    setBtnDisplay('.act-remove', canRemove);
+    setBtnDisplay(ref.pause, canPause);
+    setBtnDisplay(ref.resume, canResume);
+    setBtnDisplay(ref.cancel, canCancel);
+    setBtnDisplay(ref.remove, canRemove);
 
-    const barEl = el.querySelector('.task-progress-bar');
+    const barEl = ref.bar;
     let barClass = '';
     if (task.status === 'error') barClass = 'err';
     else if (task.status === 'completed') barClass = 'ok';
@@ -1082,31 +1149,51 @@ class UploadManager {
     const newWidth = Math.max(0, Math.min(100, task.progress || 0)) + '%';
     if (barEl.style.width !== newWidth) barEl.style.width = newWidth;
 
-    const metaLeft = el.querySelector('.task-meta-left');
+    const metaLeft = ref.metaLeft;
     const leftParts = [formatBytes(task.size), task.parentPath];
     if (task.totalChunks) leftParts.push(task.uploadedCount + '/' + task.totalChunks);
     const leftText = leftParts.join(' · ');
     if (metaLeft.textContent !== leftText) metaLeft.textContent = leftText;
 
-    const metaRight = el.querySelector('.task-meta-right');
+    const metaRight = ref.metaRight;
     const rightText = this._formatRightMeta(task);
     if (metaRight.textContent !== rightText) metaRight.textContent = rightText;
   }
 
+  // 单次任务更新（O(1) 查表）
   _updateTask(taskId) {
-    const t = this.tasks.find(x => x.id === taskId);
+    const t = this._byId.get(taskId);
     if (!t) return;
     let el = this._taskEls.get(taskId);
     if (!el || !el.isConnected) {
-      this.render();
+      // 行还没挂载（如刚入队就被标记为上传中）：交给合帧渲染，避免一次 render 被调用 N 次
+      this._scheduleRender();
       return;
     }
     this._updateTaskEl(el, t);
+    this._refreshBadge();
+  }
+
+  // 合帧调度：哈希进度这类高频回调不再每条都动 DOM
+  _scheduleTaskUpdate(taskId) {
+    if (this._pendingTaskIds.has(taskId)) return;
+    this._pendingTaskIds.add(taskId);
+    if (this._taskUpdateScheduled) return;
+    this._taskUpdateScheduled = true;
+    _scheduleRender(() => {
+      this._taskUpdateScheduled = false;
+      const ids = Array.from(this._pendingTaskIds);
+      this._pendingTaskIds.clear();
+      for (const id of ids) this._updateTask(id);
+    });
+  }
+
+  _refreshBadge() {
     if (this.badge) this.updateBadge(this.badge);
   }
 
   render() {
-    if (this.badge) this.updateBadge(this.badge);
+    this._refreshBadge();
 
     if (this.tasks.length === 0) {
       if (this.list.children.length !== 1 || !this.list.querySelector('div[style*="暂无上传任务"]')) {
@@ -1137,6 +1224,7 @@ class UploadManager {
 
     for (const [id, el] of Array.from(this._taskEls)) {
       if (!validIds.has(id)) {
+        this._clearTaskRefs(el);
         el.remove();
         this._taskEls.delete(id);
       }
@@ -2546,26 +2634,29 @@ class WinFileExplorer extends HTMLElement {
       }
     }
 
-    const dirs = Array.from(dirSet).sort((a, b) => {
-      const da = a.split('/').length;
-      const db = b.split('/').length;
-      return da - db || a.localeCompare(b);
-    });
+    const dirs = Array.from(dirSet);
+    // 同层目录彼此无依赖 → 按层并发；层与层之间仍串行，保证父目录先建好
+    const byDepth = new Map();
     for (const relDir of dirs) {
-      const lastSlash = relDir.lastIndexOf('/');
-      const parentRel = lastSlash >= 0 ? relDir.substring(0, lastSlash) : '';
-      const dirName = lastSlash >= 0 ? relDir.substring(lastSlash + 1) : relDir;
-      const parentAbs = joinParentPath(rootPath, parentRel);
-      try { await API.createItem(parentAbs, 'folder', dirName); }
-      catch (_) {}
+      const d = relDir.split('/').length;
+      if (!byDepth.has(d)) byDepth.set(d, []);
+      byDepth.get(d).push(relDir);
+    }
+    for (const depth of Array.from(byDepth.keys()).sort((a, b) => a - b)) {
+      await Promise.all(byDepth.get(depth).map(relDir => {
+        const lastSlash = relDir.lastIndexOf('/');
+        const parentRel = lastSlash >= 0 ? relDir.substring(0, lastSlash) : '';
+        const dirName = lastSlash >= 0 ? relDir.substring(lastSlash + 1) : relDir;
+        return API.createItem(joinParentPath(rootPath, parentRel), 'folder', dirName).catch(() => {});
+      }));
     }
 
-    for (const { file, relativePath } of filesWithPath) {
+    // 批量入队：一次合并渲染 + 延后启动，避免 N 个文件卡死主线程
+    uploadManager.addMany(filesWithPath.map(({ file, relativePath }) => {
       const lastSlash = relativePath.lastIndexOf('/');
       const parentRel = lastSlash >= 0 ? relativePath.substring(0, lastSlash) : '';
-      const parentAbs = joinParentPath(rootPath, parentRel);
-      uploadManager.add(file, parentAbs);
-    }
+      return { file, parentPath: joinParentPath(rootPath, parentRel) };
+    }));
 
     showToast(`已加入 ${filesWithPath.length} 个文件到上传队列`);
     if (dirs.length > 0) {
